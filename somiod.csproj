@@ -142,6 +142,8 @@
       <DependentUpon>SMIOD_DB.mdf</DependentUpon>
     </Content>
     <Content Include="Content\Site.css" />
+    <Content Include="Data\CreateDatabase.sql" />
+    <Content Include="Data\SeedData.sql" />
     <Content Include="Global.asax" />
     <Content Include="Web.config" />
   </ItemGroup>
@@ -185,7 +187,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Data\" />
     <Folder Include="Views\Somiod\" />
   </ItemGroup>
   <PropertyGroup>
