@@ -1,0 +1,33 @@
+CREATE TABLE Applications (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Name NVARCHAR(255) UNIQUE NOT NULL,
+    CreationDateTime DATETIME NOT NULL
+);
+
+CREATE TABLE Containers (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Name NVARCHAR(255) NOT NULL,
+    ParentId INT NOT NULL,
+    CreationDateTime DATETIME NOT NULL,
+    FOREIGN KEY (ParentId) REFERENCES Applications(Id) ON DELETE CASCADE
+);
+
+CREATE TABLE ContentInstances (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Name NVARCHAR(255) NOT NULL,
+    ContentType NVARCHAR(100) NOT NULL,
+    Content NVARCHAR(MAX) NOT NULL,
+    ParentId INT NOT NULL,
+    CreationDateTime DATETIME NOT NULL,
+    FOREIGN KEY (ParentId) REFERENCES Containers(Id) ON DELETE CASCADE
+);
+
+CREATE TABLE Subscriptions (
+    Id INT PRIMARY KEY IDENTITY(1,1),
+    Name NVARCHAR(255) NOT NULL,
+    Evt INT NOT NULL,
+    Endpoint NVARCHAR(500) NOT NULL,
+    ParentId INT NOT NULL,
+    CreationDateTime DATETIME NOT NULL,
+    FOREIGN KEY (ParentId) REFERENCES Containers(Id) ON DELETE CASCADE
+);
