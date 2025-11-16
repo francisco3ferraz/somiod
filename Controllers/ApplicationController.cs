@@ -10,11 +10,11 @@ using SOMIOD.Models;
 namespace SOMIOD.Controllers
 {
     [RoutePrefix("api/somiod")]
-    public class SomiodController : ApiController
+    public class ApplicationController : ApiController
     {
         private readonly string connectionString;
 
-        public SomiodController()
+        public ApplicationController()
         {
             connectionString = SOMIOD.Properties.Settings.Default.ConnStr;
         }
