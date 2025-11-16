@@ -20,6 +20,73 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
+        /// Retrieves a list of all application resources in the SOMIOD middleware
+        /// </summary>
+        /// <returns>List of application resource paths</returns>
+        /// <response code="200">Returns list of application paths ordered by creation date (newest first)</response>
+        /// <response code="400">Missing or invalid discovery header</response>
+        /// <remarks>
+        /// Sample request:
+        /// 
+        ///     GET /api/somiod
+        ///     Headers:
+        ///         somiod-discovery: application
+        ///     
+        /// The discovery header is required to retrieve the list of applications
+        /// </remarks>
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult GetApplications()
+        {
+            // Check for somiod-discovery header (Requirement)
+            if (!Request.Headers.Contains("somiod-discovery"))
+            {
+                return BadRequest("Discovery header required. Include 'somiod-discovery: application' header.");
+            }
+
+            var discoveryHeader = Request.Headers.GetValues("somiod-discovery").FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(discoveryHeader) || !discoveryHeader.Equals("application", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest("Invalid discovery header value. Expected 'somiod-discovery: application'.");
+            }
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    string query = "SELECT Name FROM Applications ORDER BY CreationDateTime DESC";
+
+                    var applicationPaths = new List<string>();
+
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string appName = reader.GetString(reader.GetOrdinal("Name"));
+                                applicationPaths.Add($"/api/somiod/{appName}");
+                            }
+                        }
+                    }
+
+                    return Ok(applicationPaths);
+                }
+                catch (SqlException ex)
+                {
+                    return InternalServerError(new Exception("An error occurred while retrieving applications."));
+                }
+                catch (Exception ex)
+                {
+                    return InternalServerError(ex);
+                }
+            }
+        }
+
+        /// <summary>
         /// Creates a new application resource in the SOMIOD middleware
         /// </summary>
         /// <param name="app">Application object containing resource-name (optional - will auto-generate if empty)</param>
