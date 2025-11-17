@@ -6,10 +6,11 @@ using System.Linq;
 using System.Net;
 using System.Web.Http;
 using SOMIOD.Models;
+using SOMIOD.Helpers;
 
 namespace SOMIOD.Controllers
 {
-    [RoutePrefix("api/somiod")]
+    [RoutePrefix("api/somiod/applications")]
     public class ApplicationController : ApiController
     {
         private readonly string connectionString;
@@ -19,72 +20,6 @@ namespace SOMIOD.Controllers
             connectionString = SOMIOD.Properties.Settings.Default.ConnStr;
         }
 
-        /// <summary>
-        /// Retrieves a list of all application resources in the SOMIOD middleware
-        /// </summary>
-        /// <returns>List of application resource paths</returns>
-        /// <response code="200">Returns list of application paths ordered by creation date (newest first)</response>
-        /// <response code="400">Missing or invalid discovery header</response>
-        /// <remarks>
-        /// Sample request:
-        /// 
-        ///     GET /api/somiod
-        ///     Headers:
-        ///         somiod-discovery: application
-        ///     
-        /// The discovery header is required to retrieve the list of applications
-        /// </remarks>
-        [HttpGet]
-        [Route("")]
-        public IHttpActionResult GetApplications()
-        {
-            // Check for somiod-discovery header (Requirement)
-            if (!Request.Headers.Contains("somiod-discovery"))
-            {
-                return BadRequest("Discovery header required. Include 'somiod-discovery: application' header.");
-            }
-
-            var discoveryHeader = Request.Headers.GetValues("somiod-discovery").FirstOrDefault();
-
-            if (string.IsNullOrWhiteSpace(discoveryHeader) || !discoveryHeader.Equals("application", StringComparison.OrdinalIgnoreCase))
-            {
-                return BadRequest("Invalid discovery header value. Expected 'somiod-discovery: application'.");
-            }
-
-            using (SqlConnection conn = new SqlConnection(connectionString))
-            {
-                try
-                {
-                    conn.Open();
-
-                    string query = "SELECT Name FROM Applications ORDER BY CreationDateTime DESC";
-
-                    var applicationPaths = new List<string>();
-
-                    using (SqlCommand cmd = new SqlCommand(query, conn))
-                    {
-                        using (SqlDataReader reader = cmd.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                string appName = reader.GetString(reader.GetOrdinal("Name"));
-                                applicationPaths.Add($"/api/somiod/{appName}");
-                            }
-                        }
-                    }
-
-                    return Ok(applicationPaths);
-                }
-                catch (SqlException ex)
-                {
-                    return InternalServerError(new Exception("An error occurred while retrieving applications."));
-                }
-                catch (Exception ex)
-                {
-                    return InternalServerError(ex);
-                }
-            }
-        }
 
         /// <summary>
         /// Creates a new application resource in the SOMIOD middleware
@@ -116,10 +51,10 @@ namespace SOMIOD.Controllers
             // Auto-generate resource_name if empty (Requirement)
             if (string.IsNullOrWhiteSpace(app.resource_name))
             {
-                app.resource_name = GenerateUniqueResourceName("app");
+                app.resource_name = ValidationHelper.GenerateUniqueResourceName("app");
             }
 
-            if (!IsValidResourceName(app.resource_name))
+            if (!ValidationHelper.IsValidResourceName(app.resource_name))
             {
                 return BadRequest("Resource name contains invalid characters. Use only letters, numbers, hyphens, and underscores.");
             }
@@ -133,7 +68,7 @@ namespace SOMIOD.Controllers
                 {
                     conn.Open();
 
-                    if (ApplicationExists(conn, app.resource_name))
+                    if (DatabaseHelper.ApplicationExists(conn, app.resource_name))
                     {
                         return Content(HttpStatusCode.Conflict,
                             new { 
@@ -178,6 +113,7 @@ namespace SOMIOD.Controllers
                 }
             }
         }
+
 
         /// <summary>
         /// Retrieves a specific application resource by name
@@ -250,6 +186,7 @@ namespace SOMIOD.Controllers
             }
         }
 
+
         /// <summary>
         /// Updates an existing application resource
         /// </summary>
@@ -283,7 +220,7 @@ namespace SOMIOD.Controllers
                 return BadRequest("Application object with resource_name is required");
             }
 
-            if (!IsValidResourceName(app.resource_name))
+            if (!ValidationHelper.IsValidResourceName(app.resource_name))
             {
                 return BadRequest("New resource name contains invalid characters.");
             }
@@ -320,7 +257,7 @@ namespace SOMIOD.Controllers
 
                     if (!name.Equals(app.resource_name, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (ApplicationExists(conn, app.resource_name))
+                        if (DatabaseHelper.ApplicationExists(conn, app.resource_name))
                         {
                             return Content(HttpStatusCode.Conflict,
                                 new { 
@@ -365,6 +302,7 @@ namespace SOMIOD.Controllers
                 }
             }
         }
+
 
         /// <summary>
         /// Deletes an application resource and all its child resources (containers, content-instances, subscriptions)
@@ -461,72 +399,6 @@ namespace SOMIOD.Controllers
                 {
                     return InternalServerError(ex);
                 }
-            }
-        }
-
-        /// <summary>
-        /// Generates a unique resource name with a prefix
-        /// From Worksheet requirements: auto-generate unique names when not provided
-        /// </summary>
-        /// <param name="prefix">Prefix for the resource name (e.g., "app", "container")</param>
-        /// <returns>Unique resource name</returns>
-        private string GenerateUniqueResourceName(string prefix)
-        {
-            // Generate unique name (timestamp + GUID)
-            string timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            string shortGuid = Guid.NewGuid().ToString("N").Substring(0, 6);
-            return $"{prefix}_{timestamp}_{shortGuid}";
-        }
-
-        /// <summary>
-        /// Validates resource name format
-        /// Ensures names are URL-safe and don't contain problematic characters
-        /// </summary>
-        /// <param name="name">Resource name to validate</param>
-        /// <returns>True if valid, false otherwise</returns>
-        private bool IsValidResourceName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-                return false;
-
-            // Allow only alphanumeric, hyphens, and underscores (URL-safe)
-            // No spaces, slashes, or special characters that break URLs
-            return System.Text.RegularExpressions.Regex.IsMatch(name, @"^[a-zA-Z0-9_-]+$");
-        }
-
-        /// <summary>
-        /// Checks if an application with the given name exists
-        /// Helper method to reduce code duplication
-        /// </summary>
-        /// <param name="conn">Open SQL connection</param>
-        /// <param name="name">Application name to check</param>
-        /// <returns>True if exists, false otherwise</returns>
-        private bool ApplicationExists(SqlConnection conn, string name)
-        {
-            string checkQuery = "SELECT COUNT(*) FROM Applications WHERE Name = @Name";
-            using (SqlCommand checkCmd = new SqlCommand(checkQuery, conn))
-            {
-                checkCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = name;
-                int count = (int)checkCmd.ExecuteScalar();
-                return count > 0;
-            }
-        }
-
-        /// <summary>
-        /// Gets application ID by name
-        /// Helper method for child resource operations
-        /// </summary>
-        /// <param name="conn">Open SQL connection</param>
-        /// <param name="name">Application name</param>
-        /// <returns>Application ID or -1 if not found</returns>
-        private int GetApplicationId(SqlConnection conn, string name)
-        {
-            string query = "SELECT Id FROM Applications WHERE Name = @Name";
-            using (SqlCommand cmd = new SqlCommand(query, conn))
-            {
-                cmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = name;
-                object result = cmd.ExecuteScalar();
-                return result != null ? Convert.ToInt32(result) : -1;
             }
         }
     }

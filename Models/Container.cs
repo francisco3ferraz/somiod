@@ -1,4 +1,6 @@
-﻿namespace SOMIOD.Models
+﻿using System;
+
+namespace SOMIOD.Models
 {
     public class Container : ResourceBase
     {
