@@ -1,16 +1,4 @@
-﻿//==============================================================
-// SOMIOD - Service Oriented Middleware for IoT and Open Data
-// Course: Integração de Sistemas
-// Year: 2025/2026
-// 
-// File: ContainersController.cs
-// Description: RESTful API controller for Container resources
-//              Implements CRUD + Discovery operations
-// 
-// Implemented by: [Your Name]
-//==============================================================
-
-using System;
+﻿using System;
 using System.Data;
 using System.Data.SqlClient;
 using System.Net;
