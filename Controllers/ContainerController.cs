@@ -10,7 +10,7 @@ using System.Web.Http;
 
 namespace SOMIOD.Controllers
 {
-    [RoutePrefix("api/somiod/applications/{appName}/containers")]
+    [RoutePrefix("api/somiod/{parentApp}")]
     public class ContainersController : ApiController
     {
         private readonly string connectionString;
@@ -23,7 +23,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new container resource under a specific application
         /// </summary>
-        /// <param name="appName">The parent application resource-name</param>
+        /// <param name="parentApp">The parent application resource-name</param>
         /// <param name="container">Container object containing resource-name (optional - will auto-generate if empty)</param>
         /// <returns>Created container with auto-generated fields</returns>
         /// <response code="201">Container created successfully</response>
@@ -42,9 +42,9 @@ namespace SOMIOD.Controllers
         /// </remarks>
         [HttpPost]
         [Route("")]
-        public IHttpActionResult PostContainer(string appName, [FromBody] Container container)
+        public IHttpActionResult PostContainer(string parentApp, [FromBody] Container container)
         {
-            if (string.IsNullOrWhiteSpace(appName))
+            if (string.IsNullOrWhiteSpace(parentApp))
             {
                 return BadRequest("Parent application name is required in URL");
             }
@@ -72,13 +72,13 @@ namespace SOMIOD.Controllers
                 {
                     conn.Open();
 
-                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    int parentId = DatabaseHelper.GetApplicationId(conn, parentApp);
                     if (parentId == -1)
                     {
                         return Content(HttpStatusCode.NotFound,
                             new
                             {
-                                error = $"Parent application '{appName}' not found",
+                                error = $"Parent application '{parentApp}' not found",
                                 res_type = "application"
                             });
                     }
@@ -88,7 +88,7 @@ namespace SOMIOD.Controllers
                         return Content(HttpStatusCode.Conflict,
                             new
                             {
-                                error = $"Container '{container.resource_name}' already exists under application '{appName}'",
+                                error = $"Container '{container.resource_name}' already exists under application '{parentApp}'",
                                 res_type = "container"
                             });
                     }
@@ -113,11 +113,11 @@ namespace SOMIOD.Controllers
                         id = newId,
                         res_type = container.res_type,
                         resource_name = container.resource_name,
-                        parent = appName,
+                        parent = parentApp,
                         creation_datetime = container.creation_datetime.ToString("yyyy-MM-ddTHH:mm:ss")
                     };
 
-                    var locationUri = new Uri(Request.RequestUri, $"/api/somiod/{appName}/{container.resource_name}");
+                    var locationUri = new Uri(Request.RequestUri, $"/api/somiod/{parentApp}/{container.resource_name}");
                     return Created(locationUri, response);
                 }
                 catch (SqlException ex)
@@ -134,7 +134,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Retrieves a specific container resource by name OR discovers resources under an application
         /// </summary>
-        /// <param name="appName">The parent application resource-name</param>
+        /// <param name="parentApp">The parent application resource-name</param>
         /// <response code="200">Container found and returned</response>
         /// <response code="404">Container or parent application not found</response>
         /// <remarks>
@@ -145,10 +145,10 @@ namespace SOMIOD.Controllers
         /// </remarks>
         [HttpGet]
         [Route("{containerName}")]
-        public IHttpActionResult GetContainer(string appName, string containerName = null)
+        public IHttpActionResult GetContainer(string parentApp, string containerName = null)
         {
 
-            if (string.IsNullOrWhiteSpace(appName))
+            if (string.IsNullOrWhiteSpace(parentApp))
             {
                 return BadRequest("Application name is required in URL");
             }
@@ -166,15 +166,15 @@ namespace SOMIOD.Controllers
 
                     // Verify hierarchy and get container data
                     string query = @"
-                        SELECT c.Id, c.Name, c.CreationDateTime, a.Name as AppName
+                        SELECT c.Id, c.Name, c.CreationDateTime, a.Name as parentApp
                         FROM Containers c
                         JOIN Applications a ON c.ParentId = a.Id
-                        WHERE c.Name = @ContainerName AND a.Name = @AppName";
+                        WHERE c.Name = @ContainerName AND a.Name = @parentApp";
 
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
                         cmd.Parameters.Add("@ContainerName", SqlDbType.NVarChar, 255).Value = containerName;
-                        cmd.Parameters.Add("@AppName", SqlDbType.NVarChar, 255).Value = appName;
+                        cmd.Parameters.Add("@parentApp", SqlDbType.NVarChar, 255).Value = parentApp;
 
                         using (SqlDataReader reader = cmd.ExecuteReader())
                         {
@@ -185,7 +185,7 @@ namespace SOMIOD.Controllers
                                     id = reader.GetInt32(reader.GetOrdinal("Id")),
                                     res_type = "container",
                                     resource_name = reader.GetString(reader.GetOrdinal("Name")),
-                                    parent = reader.GetString(reader.GetOrdinal("AppName")),
+                                    parent = reader.GetString(reader.GetOrdinal("parentApp")),
                                     creation_datetime = reader.GetDateTime(reader.GetOrdinal("CreationDateTime"))
                                         .ToString("yyyy-MM-ddTHH:mm:ss")
                                 };
@@ -197,7 +197,7 @@ namespace SOMIOD.Controllers
                                 return Content(HttpStatusCode.NotFound,
                                     new
                                     {
-                                        error = $"Container '{containerName}' not found under application '{appName}'",
+                                        error = $"Container '{containerName}' not found under application '{parentApp}'",
                                         res_type = "container"
                                     });
                             }
@@ -218,7 +218,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Updates an existing container resource
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
+        /// <param name="parentApp">Parent application resource-name</param>
         /// <param name="containerName">Current container resource-name</param>
         /// <param name="container">Container object with updated resource-name</param>
         /// <returns>Updated container properties</returns>
@@ -237,9 +237,9 @@ namespace SOMIOD.Controllers
         /// </remarks>
         [HttpPut]
         [Route("{containerName}")]
-        public IHttpActionResult PutContainer(string appName, string containerName, [FromBody] Container container)
+        public IHttpActionResult PutContainer(string parentApp, string containerName, [FromBody] Container container)
         {
-            if (string.IsNullOrWhiteSpace(appName))
+            if (string.IsNullOrWhiteSpace(parentApp))
             {
                 return BadRequest("Application name is required in URL");
             }
@@ -265,13 +265,13 @@ namespace SOMIOD.Controllers
                 {
                     conn.Open();
 
-                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    int parentId = DatabaseHelper.GetApplicationId(conn, parentApp);
                     if (parentId == -1)
                     {
                         return Content(HttpStatusCode.NotFound,
                             new
                             {
-                                error = $"Parent application '{appName}' not found",
+                                error = $"Parent application '{parentApp}' not found",
                                 res_type = "application"
                             });
                     }
@@ -296,7 +296,7 @@ namespace SOMIOD.Controllers
                                 return Content(HttpStatusCode.NotFound,
                                     new
                                     {
-                                        error = $"Container '{containerName}' not found under application '{appName}'",
+                                        error = $"Container '{containerName}' not found under application '{parentApp}'",
                                         res_type = "container"
                                     });
                             }
@@ -314,7 +314,7 @@ namespace SOMIOD.Controllers
                             return Content(HttpStatusCode.Conflict,
                                 new
                                 {
-                                    error = $"Container '{container.resource_name}' already exists under application '{appName}'",
+                                    error = $"Container '{container.resource_name}' already exists under application '{parentApp}'",
                                     res_type = "container"
                                 });
                         }
@@ -340,7 +340,7 @@ namespace SOMIOD.Controllers
                         id = containerId,
                         res_type = "container",
                         resource_name = container.resource_name,
-                        parent = appName,
+                        parent = parentApp,
                         creation_datetime = creationDateTime.ToString("yyyy-MM-ddTHH:mm:ss")
                     };
 
@@ -360,7 +360,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Deletes a container resource and all its child resources (content-instances, subscriptions)
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
+        /// <param name="parentApp">Parent application resource-name</param>
         /// <param name="containerName">The container resource-name to delete</param>
         /// <returns>Success confirmation or error</returns>
         /// <response code="200">Container deleted successfully</response>
@@ -374,10 +374,10 @@ namespace SOMIOD.Controllers
         /// </remarks>
         [HttpDelete]
         [Route("{containerName}")]
-        public IHttpActionResult DeleteContainer(string appName, string containerName)
+        public IHttpActionResult DeleteContainer(string parentApp, string containerName)
         {
             // Validate inputs
-            if (string.IsNullOrWhiteSpace(appName))
+            if (string.IsNullOrWhiteSpace(parentApp))
             {
                 return BadRequest("Application name is required");
             }
@@ -394,13 +394,13 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     // Step 1: Verify parent application exists
-                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    int parentId = DatabaseHelper.GetApplicationId(conn, parentApp);
                     if (parentId == -1)
                     {
                         return Content(HttpStatusCode.NotFound,
                             new
                             {
-                                error = $"Parent application '{appName}' not found",
+                                error = $"Parent application '{parentApp}' not found",
                                 res_type = "application"
                             });
                     }
@@ -430,7 +430,7 @@ namespace SOMIOD.Controllers
                                 return Content(HttpStatusCode.NotFound,
                                     new
                                     {
-                                        error = $"Container '{containerName}' not found under application '{appName}'",
+                                        error = $"Container '{containerName}' not found under application '{parentApp}'",
                                         res_type = "container"
                                     });
                             }
@@ -461,7 +461,7 @@ namespace SOMIOD.Controllers
                     {
                         message = $"Container '{actualName}' deleted successfully",
                         deleted_resource = actualName,
-                        parent = appName,
+                        parent = parentApp,
                         res_type = "container",
                         cascade_info = new
                         {
@@ -487,7 +487,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Discovers all containers under a specific application
         /// </summary>
-        /// <param name="appName">Parent application name</param>
+        /// <param name="parentApp">Parent application name</param>
         /// <returns>List of paths to containers</returns>
         /// <response code="200">Discovery successful</response>
         /// <response code="400">Missing or invalid discovery header</response>
@@ -495,16 +495,16 @@ namespace SOMIOD.Controllers
         /// <remarks>
         /// Sample request:
         /// 
-        ///     GET /api/somiod/applications/smart-home/containers
+        ///     GET /api/somiod/smart-home
         ///     Headers:
         ///       somiod-discovery: container
         ///     
-        /// Returns: ["/api/somiod/applications/smart-home/containers/living-room", 
-        ///           "/api/somiod/applications/smart-home/containers/bedroom"]
+        /// Returns: ["/api/somiod/smart-home/living-room", 
+        ///           "/api/somiod/smart-home/bedroom"]
         /// </remarks>
         [HttpGet]
         [Route("")]
-        public IHttpActionResult DiscoverContainers(string appName)
+        public IHttpActionResult DiscoverContainers(string parentApp)
         {
             // Check for somiod-discovery header
             if (!Request.Headers.Contains("somiod-discovery"))
@@ -539,13 +539,13 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     // Verify parent application exists
-                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    int parentId = DatabaseHelper.GetApplicationId(conn, parentApp);
                     if (parentId == -1)
                     {
                         return Content(HttpStatusCode.NotFound,
                             new
                             {
-                                error = $"Application '{appName}' not found",
+                                error = $"Application '{parentApp}' not found",
                                 res_type = "application"
                             });
                     }
@@ -567,7 +567,7 @@ namespace SOMIOD.Controllers
                             while (reader.Read())
                             {
                                 string containerName = reader.GetString(0);
-                                paths.Add($"/api/somiod/applications/{appName}/containers/{containerName}");
+                                paths.Add($"/api/somiod/{parentApp}/{containerName}");
                             }
                         }
                     }

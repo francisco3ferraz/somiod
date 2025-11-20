@@ -10,7 +10,7 @@ using SOMIOD.Helpers;
 
 namespace SOMIOD.Controllers
 {
-    [RoutePrefix("api/somiod/applications")]
+    [RoutePrefix("api/somiod")]
     public class ApplicationController : ApiController
     {
         private readonly string connectionString;
@@ -412,11 +412,11 @@ namespace SOMIOD.Controllers
         /// <remarks>
         /// Sample request:
         /// 
-        ///     GET /api/somiod/applications
+        ///     GET /api/somiod
         ///     Headers:
         ///       somiod-discovery: application
         ///     
-        /// Returns array of paths like: ["/api/somiod/applications/app1", "/api/somiod/applications/app2"]
+        /// Returns array of paths like: ["/api/somiod/app1", "/api/somiod/app2"]
         /// </remarks>
         [HttpGet]
         [Route("")]
@@ -465,7 +465,7 @@ namespace SOMIOD.Controllers
                             while (reader.Read())
                             {
                                 string appName = reader.GetString(0);
-                                paths.Add($"/api/somiod/applications/{appName}");
+                                paths.Add($"/api/somiod/{appName}");
                             }
                         }
                     }
@@ -474,12 +474,10 @@ namespace SOMIOD.Controllers
                 }
                 catch (SqlException ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"SQL Error in DiscoverApplications: {ex.Message}");
                     return InternalServerError(new Exception("An error occurred during resource discovery."));
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Error in DiscoverApplications: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
