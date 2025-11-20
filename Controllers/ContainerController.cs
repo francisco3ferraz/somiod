@@ -1,10 +1,12 @@
-﻿using System;
+﻿using SOMIOD.Helpers;
+using SOMIOD.Models;
+using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Linq;
 using System.Net;
 using System.Web.Http;
-using SOMIOD.Models;
-using SOMIOD.Helpers;
 
 namespace SOMIOD.Controllers
 {
@@ -21,7 +23,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new container resource under a specific application
         /// </summary>
-        /// <param name="parentApp">The parent application resource-name</param>
+        /// <param name="appName">The parent application resource-name</param>
         /// <param name="container">Container object containing resource-name (optional - will auto-generate if empty)</param>
         /// <returns>Created container with auto-generated fields</returns>
         /// <response code="201">Container created successfully</response>
@@ -476,6 +478,110 @@ namespace SOMIOD.Controllers
                 }
                 catch (Exception ex)
                 {
+                    return InternalServerError(ex);
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// Discovers all containers under a specific application
+        /// </summary>
+        /// <param name="appName">Parent application name</param>
+        /// <returns>List of paths to containers</returns>
+        /// <response code="200">Discovery successful</response>
+        /// <response code="400">Missing or invalid discovery header</response>
+        /// <response code="404">Parent application not found</response>
+        /// <remarks>
+        /// Sample request:
+        /// 
+        ///     GET /api/somiod/applications/smart-home/containers
+        ///     Headers:
+        ///       somiod-discovery: container
+        ///     
+        /// Returns: ["/api/somiod/applications/smart-home/containers/living-room", 
+        ///           "/api/somiod/applications/smart-home/containers/bedroom"]
+        /// </remarks>
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult DiscoverContainers(string appName)
+        {
+            // Check for somiod-discovery header
+            if (!Request.Headers.Contains("somiod-discovery"))
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new
+                    {
+                        error = "Discovery header required. Use 'somiod-discovery: container'",
+                        res_type = "error"
+                    });
+            }
+
+            // Get discovery type from header
+            var discoveryValues = Request.Headers.GetValues("somiod-discovery");
+            string discoveryType = discoveryValues.FirstOrDefault()?.ToLower();
+
+            // Validate discovery type
+            if (discoveryType != "container")
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new
+                    {
+                        error = $"Invalid discovery type '{discoveryType}'. Expected 'container'",
+                        res_type = "error"
+                    });
+            }
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    // Verify parent application exists
+                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    if (parentId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new
+                            {
+                                error = $"Application '{appName}' not found",
+                                res_type = "application"
+                            });
+                    }
+
+                    var paths = new List<string>();
+
+                    string query = @"
+                SELECT c.Name as ContainerName
+                FROM Containers c
+                WHERE c.ParentId = @ParentId
+                ORDER BY c.Name";
+
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        cmd.Parameters.Add("@ParentId", SqlDbType.Int).Value = parentId;
+
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string containerName = reader.GetString(0);
+                                paths.Add($"/api/somiod/applications/{appName}/containers/{containerName}");
+                            }
+                        }
+                    }
+
+                    return Ok(paths);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in DiscoverContainers: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred during resource discovery."));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in DiscoverContainers: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }

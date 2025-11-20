@@ -129,10 +129,10 @@ namespace SOMIOD.Controllers
         ///     
         /// </remarks>
         [HttpGet]
-        [Route("{name}")]
-        public IHttpActionResult GetApplication(string name)
+        [Route("{appName}")]
+        public IHttpActionResult GetApplication(string appName)
         {
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(appName))
             {
                 return BadRequest("Application name is required");
             }
@@ -147,7 +147,7 @@ namespace SOMIOD.Controllers
 
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        cmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = name;
+                        cmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = appName;
 
                         using (SqlDataReader reader = cmd.ExecuteReader())
                         {
@@ -168,7 +168,7 @@ namespace SOMIOD.Controllers
                             {
                                 return Content(HttpStatusCode.NotFound, 
                                     new { 
-                                        error = $"Application '{name}' not found",
+                                        error = $"Application '{appName}' not found",
                                         res_type = "application"
                                     });
                             }
@@ -207,10 +207,10 @@ namespace SOMIOD.Controllers
         ///     
         /// </remarks>
         [HttpPut]
-        [Route("{name}")]
-        public IHttpActionResult PutApplication(string name, [FromBody] Application app)
+        [Route("{appName}")]
+        public IHttpActionResult PutApplication(string appName, [FromBody] Application app)
         {
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(appName))
             {
                 return BadRequest("Application name is required in URL");
             }
@@ -237,7 +237,7 @@ namespace SOMIOD.Controllers
 
                     using (SqlCommand checkCmd = new SqlCommand(checkExistsQuery, conn))
                     {
-                        checkCmd.Parameters.Add("@OldName", SqlDbType.NVarChar, 255).Value = name;
+                        checkCmd.Parameters.Add("@OldName", SqlDbType.NVarChar, 255).Value = appName;
 
                         using (SqlDataReader reader = checkCmd.ExecuteReader())
                         {
@@ -245,7 +245,7 @@ namespace SOMIOD.Controllers
                             {
                                 return Content(HttpStatusCode.NotFound,
                                     new { 
-                                        error = $"Application '{name}' not found",
+                                        error = $"Application '{appName}' not found",
                                         res_type = "application"
                                     });
                             }
@@ -255,7 +255,7 @@ namespace SOMIOD.Controllers
                         }
                     }
 
-                    if (!name.Equals(app.resource_name, StringComparison.OrdinalIgnoreCase))
+                    if (!appName.Equals(app.resource_name, StringComparison.OrdinalIgnoreCase))
                     {
                         if (DatabaseHelper.ApplicationExists(conn, app.resource_name))
                         {
@@ -319,10 +319,10 @@ namespace SOMIOD.Controllers
         /// Warning: This will CASCADE delete all child resources (containers, content-instances, subscriptions)
         /// </remarks>
         [HttpDelete]
-        [Route("{name}")]
-        public IHttpActionResult DeleteApplication(string name)
+        [Route("{appName}")]
+        public IHttpActionResult DeleteApplication(string appName)
         {
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(appName))
             {
                 return BadRequest("Application name is required");
             }
@@ -345,7 +345,7 @@ namespace SOMIOD.Controllers
 
                     using (SqlCommand checkCmd = new SqlCommand(checkQuery, conn))
                     {
-                        checkCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = name;
+                        checkCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = appName;
 
                         using (SqlDataReader reader = checkCmd.ExecuteReader())
                         {
@@ -353,7 +353,7 @@ namespace SOMIOD.Controllers
                             {
                                 return Content(HttpStatusCode.NotFound,
                                     new { 
-                                        error = $"Application '{name}' not found",
+                                        error = $"Application '{appName}' not found",
                                         res_type = "application"
                                     });
                             }
@@ -397,6 +397,89 @@ namespace SOMIOD.Controllers
                 }
                 catch (Exception ex)
                 {
+                    return InternalServerError(ex);
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// Discovers all applications in the system
+        /// </summary>
+        /// <returns>List of paths to all applications</returns>
+        /// <response code="200">Discovery successful - returns array of paths</response>
+        /// <response code="400">Missing or invalid discovery header</response>
+        /// <remarks>
+        /// Sample request:
+        /// 
+        ///     GET /api/somiod/applications
+        ///     Headers:
+        ///       somiod-discovery: application
+        ///     
+        /// Returns array of paths like: ["/api/somiod/applications/app1", "/api/somiod/applications/app2"]
+        /// </remarks>
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult DiscoverApplications()
+        {
+            // Check for somiod-discovery header (Page 3 requirement)
+            if (!Request.Headers.Contains("somiod-discovery"))
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new
+                    {
+                        error = "Discovery header required. Use 'somiod-discovery: application'",
+                        res_type = "error"
+                    });
+            }
+
+            // Get the discovery type from header
+            var discoveryValues = Request.Headers.GetValues("somiod-discovery");
+            string discoveryType = discoveryValues.FirstOrDefault()?.ToLower();
+
+            // Validate discovery type
+            if (discoveryType != "application")
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new
+                    {
+                        error = $"Invalid discovery type '{discoveryType}'. Expected 'application'",
+                        res_type = "error"
+                    });
+            }
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    var paths = new List<string>();
+
+                    string query = "SELECT Name FROM Applications ORDER BY Name";
+
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        using (SqlDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string appName = reader.GetString(0);
+                                paths.Add($"/api/somiod/applications/{appName}");
+                            }
+                        }
+                    }
+
+                    return Ok(paths);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in DiscoverApplications: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred during resource discovery."));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in DiscoverApplications: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
