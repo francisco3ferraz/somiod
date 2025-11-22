@@ -24,20 +24,33 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new application resource in the SOMIOD middleware
         /// </summary>
-        /// <param name="app">Application object containing resource-name (optional - will auto-generate if empty)</param>
-        /// <returns>Created application with auto-generated fields</returns>
+        /// <param name="app">Application object with resource-name (optional)</param>
+        /// <returns>Created application with all properties</returns>
         /// <response code="201">Application created successfully</response>
-        /// <response code="400">Invalid input data</response>
+        /// <response code="400">Invalid input - resource name contains invalid characters</response>
         /// <response code="409">Application with this name already exists</response>
         /// <remarks>
-        /// Sample request:
+        /// Creates a new top-level application resource.
+        /// 
+        /// **Sample request:**
         /// 
         ///     POST /api/somiod
+        ///     Content-Type: application/json
+        ///     
         ///     {
         ///        "resource_name": "smart-home"
         ///     }
         ///     
-        /// If resource_name is omitted, a unique name will be auto-generated
+        /// **Auto-generation:** If resource_name is omitted or empty, a unique name will be auto-generated.
+        /// 
+        /// **Sample response (201 Created):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "application",
+        ///        "resource_name": "smart-home",
+        ///        "creation_datetime": "2025-01-15T10:30:45"
+        ///     }
         /// </remarks>
         [HttpPost]
         [Route("")]
@@ -48,7 +61,6 @@ namespace SOMIOD.Controllers
                 app = new Application();
             }
 
-            // Auto-generate resource_name if empty (Requirement)
             if (string.IsNullOrWhiteSpace(app.resource_name))
             {
                 app.resource_name = ValidationHelper.GenerateUniqueResourceName("app");
@@ -59,7 +71,6 @@ namespace SOMIOD.Controllers
                 return BadRequest("Resource name contains invalid characters. Use only letters, numbers, hyphens, and underscores.");
             }
 
-            // Set creation datetime in ISO format (Requirement)
             app.creation_datetime = DateTime.Now;
 
             using (SqlConnection conn = new SqlConnection(connectionString))
@@ -71,7 +82,8 @@ namespace SOMIOD.Controllers
                     if (DatabaseHelper.ApplicationExists(conn, app.resource_name))
                     {
                         return Content(HttpStatusCode.Conflict,
-                            new { 
+                            new
+                            {
                                 error = $"Application '{app.resource_name}' already exists",
                                 res_type = "application"
                             });
@@ -91,7 +103,6 @@ namespace SOMIOD.Controllers
                         newId = Convert.ToInt32(insertCmd.ExecuteScalar());
                     }
 
-                    // Prepare response with full properties (Requirement)
                     var response = new
                     {
                         id = newId,
@@ -105,38 +116,41 @@ namespace SOMIOD.Controllers
                 }
                 catch (SqlException ex)
                 {
-                    return InternalServerError(new Exception("An error occurred while creating the application. Please try again."));
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in PostApplication: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred while creating the application."));
                 }
                 catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"Error in PostApplication: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
         }
 
-
         /// <summary>
-        /// Retrieves a specific application resource by name
+        /// Gets application by name OR discovers child resources (with header)
         /// </summary>
-        /// <param name="name">The resource-name of the application</param>
-        /// <returns>Application properties</returns>
-        /// <response code="200">Application found and returned</response>
-        /// <response code="404">Application not found</response>
-        /// <remarks>
-        /// Sample request:
-        /// 
-        ///     GET /api/somiod/smart-home
-        ///     
-        /// </remarks>
         [HttpGet]
         [Route("{appName}")]
-        public IHttpActionResult GetApplication(string appName)
+        public IHttpActionResult GetApplicationOrDiscoverContainer(string appName)
         {
             if (string.IsNullOrWhiteSpace(appName))
             {
                 return BadRequest("Application name is required");
             }
 
+            // Check for discovery header
+            if (Request.Headers.Contains("somiod-discovery"))
+            {
+                return DiscoverChildResources(appName);
+            }
+
+            // Regular GET application
+            return GetApplicationByName(appName);
+        }
+
+        private IHttpActionResult GetApplicationByName(string appName)
+        {
             using (SqlConnection conn = new SqlConnection(connectionString))
             {
                 try
@@ -153,58 +167,151 @@ namespace SOMIOD.Controllers
                         {
                             if (reader.Read())
                             {
-                                var application = new
+                                return Ok(new
                                 {
-                                    id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    id = reader.GetInt32(0),
                                     res_type = "application",
-                                    resource_name = reader.GetString(reader.GetOrdinal("Name")),
-                                    creation_datetime = reader.GetDateTime(reader.GetOrdinal("CreationDateTime"))
-                                        .ToString("yyyy-MM-ddTHH:mm:ss")
-                                };
-
-                                return Ok(application);
+                                    resource_name = reader.GetString(1),
+                                    creation_datetime = reader.GetDateTime(2).ToString("yyyy-MM-ddTHH:mm:ss")
+                                });
                             }
                             else
                             {
-                                return Content(HttpStatusCode.NotFound, 
-                                    new { 
-                                        error = $"Application '{appName}' not found",
-                                        res_type = "application"
-                                    });
+                                return Content(HttpStatusCode.NotFound,
+                                    new { error = $"Application '{appName}' not found", res_type = "application" });
                             }
                         }
                     }
                 }
                 catch (SqlException ex)
                 {
-                    return InternalServerError(new Exception("An error occurred while retrieving the application."));
-                }
-                catch (Exception ex)
-                {
-                    return InternalServerError(ex);
+                    System.Diagnostics.Debug.WriteLine($"SQL Error: {ex.Message}");
+                    return InternalServerError(new Exception("Database error occurred."));
                 }
             }
         }
 
+        private IHttpActionResult DiscoverChildResources(string appName)
+        {
+            var discoveryType = Request.Headers.GetValues("somiod-discovery").FirstOrDefault()?.ToLower();
+
+            var validTypes = new[] { "container", "content-instance", "subscription" };
+            if (!validTypes.Contains(discoveryType))
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new { error = $"Invalid discovery type '{discoveryType}'", valid_types = validTypes, res_type = "error" });
+            }
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    int appId = DatabaseHelper.GetApplicationId(conn, appName);
+                    if (appId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new { error = $"Application '{appName}' not found", res_type = "application" });
+                    }
+
+                    var paths = new List<string>();
+                    string query = "";
+
+                    switch (discoveryType)
+                    {
+                        case "container":
+                            query = "SELECT Name FROM Containers WHERE ParentId = @AppId ORDER BY Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                cmd.Parameters.Add("@AppId", SqlDbType.Int).Value = appId;
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        paths.Add($"/api/somiod/{appName}/{reader.GetString(0)}");
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "content-instance":
+                            query = @"SELECT c.Name, ci.Name FROM ContentInstances ci 
+                                     JOIN Containers c ON ci.ParentId = c.Id 
+                                     WHERE c.ParentId = @AppId ORDER BY c.Name, ci.Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                cmd.Parameters.Add("@AppId", SqlDbType.Int).Value = appId;
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        paths.Add($"/api/somiod/{appName}/{reader.GetString(0)}/{reader.GetString(1)}");
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "subscription":
+                            query = @"SELECT c.Name, s.Name FROM Subscriptions s 
+                                     JOIN Containers c ON s.ParentId = c.Id 
+                                     WHERE c.ParentId = @AppId ORDER BY c.Name, s.Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                cmd.Parameters.Add("@AppId", SqlDbType.Int).Value = appId;
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        paths.Add($"/api/somiod/{appName}/{reader.GetString(0)}/subs/{reader.GetString(1)}");
+                                    }
+                                }
+                            }
+                            break;
+                    }
+
+                    return Ok(paths);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error: {ex.Message}");
+                    return InternalServerError(new Exception("Database error occurred."));
+                }
+            }
+        }
 
         /// <summary>
-        /// Updates an existing application resource
+        /// Updates an existing application resource-name
         /// </summary>
-        /// <param name="name">Current resource-name of the application</param>
-        /// <param name="app">Application object with updated resource-name</param>
+        /// <param name="appName">Current resource-name of the application</param>
+        /// <param name="app">Application object with new resource-name</param>
         /// <returns>Updated application properties</returns>
         /// <response code="200">Application updated successfully</response>
+        /// <response code="400">Invalid input data or resource name</response>
         /// <response code="404">Application not found</response>
         /// <response code="409">New name conflicts with existing application</response>
-        /// <response code="400">Invalid input data</response>
         /// <remarks>
-        /// Sample request:
+        /// Updates the resource-name of an existing application.
         /// 
-        ///     PUT /api/somiod/old-name
+        /// **Sample request:**
+        /// 
+        ///     PUT /api/somiod/smart-home
+        ///     Content-Type: application/json
+        ///     
         ///     {
-        ///        "resource_name": "new-name"
+        ///        "resource_name": "smart-home-v2"
         ///     }
         ///     
+        /// **Sample response (200 OK):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "application",
+        ///        "resource_name": "smart-home-v2",
+        ///        "creation_datetime": "2025-01-15T10:30:45"
+        ///     }
+        ///     
+        /// **Note:** The creation_datetime remains unchanged after update.
         /// </remarks>
         [HttpPut]
         [Route("{appName}")]
@@ -244,7 +351,8 @@ namespace SOMIOD.Controllers
                             if (!reader.Read())
                             {
                                 return Content(HttpStatusCode.NotFound,
-                                    new { 
+                                    new
+                                    {
                                         error = $"Application '{appName}' not found",
                                         res_type = "application"
                                     });
@@ -260,7 +368,8 @@ namespace SOMIOD.Controllers
                         if (DatabaseHelper.ApplicationExists(conn, app.resource_name))
                         {
                             return Content(HttpStatusCode.Conflict,
-                                new { 
+                                new
+                                {
                                     error = $"Application '{app.resource_name}' already exists",
                                     res_type = "application"
                                 });
@@ -294,29 +403,46 @@ namespace SOMIOD.Controllers
                 }
                 catch (SqlException ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in PutApplication: {ex.Message}");
                     return InternalServerError(new Exception("An error occurred while updating the application."));
                 }
                 catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"Error in PutApplication: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
         }
 
-
         /// <summary>
-        /// Deletes an application resource and all its child resources (containers, content-instances, subscriptions)
+        /// Deletes an application and all child resources (CASCADE)
         /// </summary>
-        /// <param name="name">The resource-name of the application to delete</param>
-        /// <returns>Success confirmation or error</returns>
+        /// <param name="appName">The resource-name of the application to delete</param>
+        /// <returns>Deletion confirmation with cascade statistics</returns>
         /// <response code="200">Application deleted successfully</response>
+        /// <response code="400">Application name is missing</response>
         /// <response code="404">Application not found</response>
         /// <remarks>
-        /// Sample request:
+        /// Deletes an application and ALL its child resources via CASCADE delete.
+        /// 
+        /// **Sample request:**
         /// 
         ///     DELETE /api/somiod/smart-home
         ///     
-        /// Warning: This will CASCADE delete all child resources (containers, content-instances, subscriptions)
+        /// **Sample response (200 OK):**
+        /// 
+        ///     {
+        ///        "message": "Application 'smart-home' deleted successfully",
+        ///        "deleted_resource": "smart-home",
+        ///        "res_type": "application",
+        ///        "cascade_info": {
+        ///            "containers_deleted": 3,
+        ///            "note": "All child content-instances and subscriptions were also deleted"
+        ///        }
+        ///     }
+        ///     
+        /// **Warning:** This operation is irreversible. All containers, content-instances, 
+        /// and subscriptions under this application will be permanently deleted.
         /// </remarks>
         [HttpDelete]
         [Route("{appName}")]
@@ -352,7 +478,8 @@ namespace SOMIOD.Controllers
                             if (!reader.Read())
                             {
                                 return Content(HttpStatusCode.NotFound,
-                                    new { 
+                                    new
+                                    {
                                         error = $"Application '{appName}' not found",
                                         res_type = "application"
                                     });
@@ -393,10 +520,12 @@ namespace SOMIOD.Controllers
                 }
                 catch (SqlException ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in DeleteApplication: {ex.Message}");
                     return InternalServerError(new Exception("An error occurred while deleting the application."));
                 }
                 catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"Error in DeleteApplication: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
@@ -404,46 +533,57 @@ namespace SOMIOD.Controllers
 
 
         /// <summary>
-        /// Discovers all applications in the system
+        /// Discovers all applications in the SOMIOD middleware
         /// </summary>
-        /// <returns>List of paths to all applications</returns>
-        /// <response code="200">Discovery successful - returns array of paths</response>
-        /// <response code="400">Missing or invalid discovery header</response>
+        /// <returns>Array of paths to all applications</returns>
+        /// <response code="200">Discovery successful - returns array of resource paths</response>
+        /// <response code="400">Missing or invalid somiod-discovery header</response>
         /// <remarks>
-        /// Sample request:
+        /// Discovers all application resources. Requires the somiod-discovery header.
+        /// 
+        /// **Sample request:**
         /// 
         ///     GET /api/somiod
-        ///     Headers:
-        ///       somiod-discovery: application
+        ///     Content-Type: application/json
+        ///     somiod-discovery: application
         ///     
-        /// Returns array of paths like: ["/api/somiod/app1", "/api/somiod/app2"]
+        /// **Sample response (200 OK):**
+        /// 
+        ///     [
+        ///        "/api/somiod/smart-home",
+        ///        "/api/somiod/office-automation",
+        ///        "/api/somiod/warehouse-monitoring"
+        ///     ]
+        ///     
+        /// **Note:** Returns empty array [] if no applications exist.
+        /// 
+        /// **Required header:** somiod-discovery: application
         /// </remarks>
         [HttpGet]
         [Route("")]
         public IHttpActionResult DiscoverApplications()
         {
-            // Check for somiod-discovery header (Page 3 requirement)
             if (!Request.Headers.Contains("somiod-discovery"))
             {
                 return Content(HttpStatusCode.BadRequest,
                     new
                     {
-                        error = "Discovery header required. Use 'somiod-discovery: application'",
+                        error = "Discovery header required. Add 'somiod-discovery: application' header.",
+                        hint = "GET all without discovery header is not supported.",
                         res_type = "error"
                     });
             }
 
-            // Get the discovery type from header
             var discoveryValues = Request.Headers.GetValues("somiod-discovery");
             string discoveryType = discoveryValues.FirstOrDefault()?.ToLower();
 
-            // Validate discovery type
             if (discoveryType != "application")
             {
                 return Content(HttpStatusCode.BadRequest,
                     new
                     {
-                        error = $"Invalid discovery type '{discoveryType}'. Expected 'application'",
+                        error = $"Invalid discovery type '{discoveryType}' at this endpoint.",
+                        expected = "application",
                         res_type = "error"
                     });
             }
@@ -464,8 +604,8 @@ namespace SOMIOD.Controllers
                         {
                             while (reader.Read())
                             {
-                                string appName = reader.GetString(0);
-                                paths.Add($"/api/somiod/{appName}");
+                                string name = reader.GetString(0);
+                                paths.Add($"/api/somiod/{name}");
                             }
                         }
                     }
@@ -474,13 +614,143 @@ namespace SOMIOD.Controllers
                 }
                 catch (SqlException ex)
                 {
-                    return InternalServerError(new Exception("An error occurred during resource discovery."));
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in DiscoverApplications: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred during application discovery."));
                 }
                 catch (Exception ex)
                 {
+                    System.Diagnostics.Debug.WriteLine($"Error in DiscoverApplications: {ex.Message}");
+                    return InternalServerError(ex);
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// Creates a new container under a specific application
+        /// </summary>
+        /// <param name="appName">Parent application resource-name</param>
+        /// <param name="container">Container object with resource-name (optional)</param>
+        /// <returns>Created container with all properties</returns>
+        /// <response code="201">Container created successfully</response>
+        /// <response code="400">Invalid input - resource name contains invalid characters</response>
+        /// <response code="404">Parent application not found</response>
+        /// <response code="409">Container with this name already exists under this application</response>
+        /// <remarks>
+        /// Creates a new container resource under an existing application.
+        /// 
+        /// **Sample request:**
+        /// 
+        ///     POST /api/somiod/smart-home
+        ///     Content-Type: application/json
+        ///     
+        ///     {
+        ///        "resource_name": "living-room"
+        ///     }
+        ///     
+        /// **Auto-generation:** If resource_name is omitted, a unique name will be auto-generated.
+        /// 
+        /// **Sample response (201 Created):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "container",
+        ///        "resource_name": "living-room",
+        ///        "parent": "smart-home",
+        ///        "creation_datetime": "2025-01-15T10:35:22"
+        ///     }
+        /// </remarks>
+        [HttpPost]
+        [Route("{appName}")]
+        public IHttpActionResult PostContainer(string appName, [FromBody] Container container)
+        {
+            if (string.IsNullOrWhiteSpace(appName))
+            {
+                return BadRequest("Parent application name is required in URL");
+            }
+
+            if (container == null)
+            {
+                container = new Container();
+            }
+
+            if (string.IsNullOrWhiteSpace(container.resource_name))
+            {
+                container.resource_name = ValidationHelper.GenerateUniqueResourceName("container");
+            }
+
+            if (!ValidationHelper.IsValidResourceName(container.resource_name))
+            {
+                return BadRequest("Resource name contains invalid characters. Use only letters, numbers, hyphens, and underscores.");
+            }
+
+            container.creation_datetime = DateTime.Now;
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    int parentId = DatabaseHelper.GetApplicationId(conn, appName);
+                    if (parentId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new
+                            {
+                                error = $"Parent application '{appName}' not found",
+                                res_type = "application"
+                            });
+                    }
+
+                    if (DatabaseHelper.ContainerExists(conn, container.resource_name, parentId))
+                    {
+                        return Content(HttpStatusCode.Conflict,
+                            new
+                            {
+                                error = $"Container '{container.resource_name}' already exists under application '{appName}'",
+                                res_type = "container"
+                            });
+                    }
+
+                    string insertQuery = @"
+                        INSERT INTO Containers (Name, ParentId, CreationDateTime) 
+                        VALUES (@Name, @ParentId, @CreationDateTime);
+                        SELECT SCOPE_IDENTITY();";
+
+                    int newId;
+                    using (SqlCommand insertCmd = new SqlCommand(insertQuery, conn))
+                    {
+                        insertCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = container.resource_name;
+                        insertCmd.Parameters.Add("@ParentId", SqlDbType.Int).Value = parentId;
+                        insertCmd.Parameters.Add("@CreationDateTime", SqlDbType.DateTime).Value = container.creation_datetime;
+
+                        newId = Convert.ToInt32(insertCmd.ExecuteScalar());
+                    }
+
+                    var response = new
+                    {
+                        id = newId,
+                        res_type = container.res_type,
+                        resource_name = container.resource_name,
+                        parent = appName,
+                        creation_datetime = container.creation_datetime.ToString("yyyy-MM-ddTHH:mm:ss")
+                    };
+
+                    var locationUri = new Uri(Request.RequestUri, $"/api/somiod/{appName}/{container.resource_name}");
+                    return Created(locationUri, response);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in PostContainer: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred while creating the container."));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in PostContainer: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
         }
     }
-}
+}a
