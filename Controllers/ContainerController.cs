@@ -29,7 +29,7 @@ namespace SOMIOD.Controllers
         {
             connectionString = SOMIOD.Properties.Settings.Default.ConnStr;
         }
- 
+
 
         /// <summary>
         /// Retrieves a specific container by resource-name
@@ -423,6 +423,150 @@ namespace SOMIOD.Controllers
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error in DeleteContainer: {ex.Message}");
+                    return InternalServerError(ex);
+                }
+            }
+        }
+        /// <summary>
+        /// Creates a new content-instance under a specific container
+        /// </summary>
+        /// <param name="appName">Parent application resource-name</param>
+        /// <param name="containerName">Parent container resource-name</param>
+        /// <param name="contentInstance">ContentInstance object with properties</param>
+        /// <returns>Created content-instance with all properties</returns>
+        /// <response code="201">Content-instance created successfully</response>
+        /// <response code="400">Invalid input - missing required fields or invalid content-type</response>
+        /// <response code="404">Parent container or application not found</response>
+        /// <response code="409">Content-instance with this name already exists</response>
+        [HttpPost]
+        [Route("{containerName}")]
+        public IHttpActionResult PostContentInstance(string appName, string containerName, [FromBody] ContentInstance contentInstance)
+        {
+            if (string.IsNullOrWhiteSpace(appName))
+            {
+                return BadRequest("Application name is required in URL");
+            }
+
+            if (string.IsNullOrWhiteSpace(containerName))
+            {
+                return BadRequest("Container name is required in URL");
+            }
+
+            if (contentInstance == null)
+            {
+                return BadRequest("ContentInstance object is required");
+            }
+
+            // Auto-generate resource_name if not provided
+            if (string.IsNullOrWhiteSpace(contentInstance.resource_name))
+            {
+                contentInstance.resource_name = ValidationHelper.GenerateUniqueResourceName("data");
+            }
+
+            if (!ValidationHelper.IsValidResourceName(contentInstance.resource_name))
+            {
+                return BadRequest("Resource name contains invalid characters. Use only letters, numbers, hyphens, and underscores.");
+            }
+
+            // Validate content_type
+            if (string.IsNullOrWhiteSpace(contentInstance.content_type))
+            {
+                return BadRequest("content_type is required");
+            }
+
+            if (!ValidationHelper.IsValidContentType(contentInstance.content_type))
+            {
+                return BadRequest("Invalid content_type format. Use valid MIME type (e.g., 'application/json', 'text/plain')");
+            }
+
+            // Content can be empty but not null
+            if (contentInstance.content == null)
+            {
+                contentInstance.content = string.Empty;
+            }
+
+            contentInstance.creation_datetime = DateTime.Now;
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    // Verify parent application exists
+                    int appId = DatabaseHelper.GetApplicationId(conn, appName);
+                    if (appId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new
+                            {
+                                error = $"Parent application '{appName}' not found",
+                                res_type = "application"
+                            });
+                    }
+
+                    // Verify parent container exists
+                    int containerId = DatabaseHelper.GetContainerId(conn, containerName, appId);
+                    if (containerId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new
+                            {
+                                error = $"Parent container '{containerName}' not found under application '{appName}'",
+                                res_type = "container"
+                            });
+                    }
+
+                    // Check if content-instance already exists
+                    if (DatabaseHelper.ContentInstanceExists(conn, contentInstance.resource_name, containerId))
+                    {
+                        return Content(HttpStatusCode.Conflict,
+                            new
+                            {
+                                error = $"Content-instance '{contentInstance.resource_name}' already exists under container '{containerName}'",
+                                res_type = "content-instance"
+                            });
+                    }
+
+                    string insertQuery = @"
+                INSERT INTO ContentInstances (Name, ContentType, Content, ParentId, CreationDateTime) 
+                VALUES (@Name, @ContentType, @Content, @ParentId, @CreationDateTime);
+                SELECT SCOPE_IDENTITY();";
+
+                    int newId;
+                    using (SqlCommand insertCmd = new SqlCommand(insertQuery, conn))
+                    {
+                        insertCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = contentInstance.resource_name;
+                        insertCmd.Parameters.Add("@ContentType", SqlDbType.NVarChar, 255).Value = contentInstance.content_type;
+                        insertCmd.Parameters.Add("@Content", SqlDbType.NVarChar).Value = contentInstance.content;
+                        insertCmd.Parameters.Add("@ParentId", SqlDbType.Int).Value = containerId;
+                        insertCmd.Parameters.Add("@CreationDateTime", SqlDbType.DateTime).Value = contentInstance.creation_datetime;
+
+                        newId = Convert.ToInt32(insertCmd.ExecuteScalar());
+                    }
+
+                    var response = new
+                    {
+                        id = newId,
+                        res_type = contentInstance.res_type,
+                        resource_name = contentInstance.resource_name,
+                        parent = containerName,
+                        content_type = contentInstance.content_type,
+                        content = contentInstance.content,
+                        creation_datetime = contentInstance.creation_datetime.ToString("yyyy-MM-ddTHH:mm:ss")
+                    };
+
+                    var locationUri = new Uri(Request.RequestUri, $"/api/somiod/{appName}/{containerName}/{contentInstance.resource_name}");
+                    return Created(locationUri, response);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error in PostContentInstance: {ex.Message}");
+                    return InternalServerError(new Exception("An error occurred while creating the content-instance."));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error in PostContentInstance: {ex.Message}");
                     return InternalServerError(ex);
                 }
             }
