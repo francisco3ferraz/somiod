@@ -153,6 +153,7 @@
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="App_Start\SwaggerConfig.cs" />
     <Compile Include="App_Start\WebApiConfig.cs" />
+    <Compile Include="Controllers\ContainerChildrenController.cs" />
     <Compile Include="Controllers\ContainerController.cs" />
     <Compile Include="Controllers\ApplicationController.cs" />
     <Compile Include="Global.asax.cs">
@@ -192,6 +193,7 @@
   <ItemGroup>
     <Folder Include="Services\" />
     <Folder Include="Views\Container\" />
+    <Folder Include="Views\ContentInstance\" />
     <Folder Include="Views\Somiod\" />
   </ItemGroup>
   <PropertyGroup>
