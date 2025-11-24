@@ -6,24 +6,14 @@ using System.Web.Http;
 using SOMIOD.Helpers;
 using SOMIOD.Models;
 
-//==============================================================
-// SOMIOD - Service Oriented Middleware for IoT and Open Data
-// Course: Integração de Sistemas
-// Year: 2025/2026
-// 
-// File: ContainerChildrenController.cs
-// Description: RESTful API controller for ContentInstance child resources
-//              Implements GET, PUT, DELETE operations
-//==============================================================
-
 namespace SOMIOD.Controllers
 {
     [RoutePrefix("api/somiod/{appName}/{containerName}")]
-    public class ContainerChildrenController : ApiController
+    public class ContentInstanceController : ApiController
     {
         private readonly string connectionString;
 
-        public ContainerChildrenController()
+        public ContentInstanceController()
         {
             connectionString = SOMIOD.Properties.Settings.Default.ConnStr;
         }
