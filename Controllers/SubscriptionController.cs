@@ -118,15 +118,15 @@ namespace SOMIOD.Controllers
                     }
 
                     string insertQuery = @"
-                INSERT INTO Subscriptions (Name, Event, Endpoint, ParentId, CreationDateTime) 
-                VALUES (@Name, @Event, @Endpoint, @ParentId, @CreationDateTime);
+                INSERT INTO Subscriptions (Name, Evt, Endpoint, ParentId, CreationDateTime) 
+                VALUES (@Name, @Evt, @Endpoint, @ParentId, @CreationDateTime);
                 SELECT SCOPE_IDENTITY();";
 
                     int newId;
                     using (SqlCommand insertCmd = new SqlCommand(insertQuery, conn))
                     {
                         insertCmd.Parameters.Add("@Name", SqlDbType.NVarChar, 255).Value = subscription.resource_name;
-                        insertCmd.Parameters.Add("@Event", SqlDbType.Int).Value = subscription.evt;
+                        insertCmd.Parameters.Add("@Evt", SqlDbType.Int).Value = subscription.evt;
                         insertCmd.Parameters.Add("@Endpoint", SqlDbType.NVarChar, 500).Value = subscription.endpoint;
                         insertCmd.Parameters.Add("@ParentId", SqlDbType.Int).Value = containerId;
                         insertCmd.Parameters.Add("@CreationDateTime", SqlDbType.DateTime).Value = subscription.creation_datetime;
@@ -197,7 +197,7 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     string query = @"
-                SELECT s.Id, s.Name, s.Event, s.Endpoint, s.CreationDateTime, c.Name as ContainerName
+                SELECT s.Id, s.Name, s.Evt, s.Endpoint, s.CreationDateTime, c.Name as ContainerName
                 FROM Subscriptions s
                 JOIN Containers c ON s.ParentId = c.Id
                 JOIN Applications a ON c.ParentId = a.Id
@@ -219,7 +219,7 @@ namespace SOMIOD.Controllers
                                     res_type = "subscription",
                                     resource_name = reader.GetString(reader.GetOrdinal("Name")),
                                     parent = reader.GetString(reader.GetOrdinal("ContainerName")),
-                                    evt = reader.GetInt32(reader.GetOrdinal("Event")),
+                                    evt = reader.GetInt32(reader.GetOrdinal("Evt")),
                                     endpoint = reader.GetString(reader.GetOrdinal("Endpoint")),
                                     creation_datetime = reader.GetDateTime(reader.GetOrdinal("CreationDateTime"))
                                         .ToString("yyyy-MM-ddTHH:mm:ss")
