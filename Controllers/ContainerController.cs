@@ -1,14 +1,4 @@
-﻿//==============================================================
-// SOMIOD - Service Oriented Middleware for IoT and Open Data
-// Course: Integração de Sistemas
-// Year: 2025/2026
-// 
-// File: ContainersController.cs
-// Description: RESTful API controller for Container resources
-//              Implements CRUD + Discovery operations
-//==============================================================
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
@@ -60,7 +50,7 @@ namespace SOMIOD.Controllers
         /// </remarks>
         [HttpGet]
         [Route("{containerName}")]
-        public IHttpActionResult GetContainer(string appName, string containerName)
+        public IHttpActionResult GetContainerOrDiscover(string appName, string containerName)
         {
             if (string.IsNullOrWhiteSpace(appName))
             {
@@ -72,6 +62,19 @@ namespace SOMIOD.Controllers
                 return BadRequest("Container name is required in URL");
             }
 
+            // Check for discovery header
+            if (Request.Headers.Contains("somiod-discovery"))
+            {
+                return DiscoverContainerChildren(appName, containerName);
+            }
+
+            // Regular GET container (your existing code)
+            return GetContainerData(appName, containerName);
+        }
+
+        private IHttpActionResult GetContainerData(string appName, string containerName)
+        {
+            // Your existing GetContainer code here
             using (SqlConnection conn = new SqlConnection(connectionString))
             {
                 try
@@ -79,10 +82,10 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     string query = @"
-                        SELECT c.Id, c.Name, c.CreationDateTime, a.Name as AppName
-                        FROM Containers c
-                        JOIN Applications a ON c.ParentId = a.Id
-                        WHERE c.Name = @ContainerName AND a.Name = @AppName";
+                SELECT c.Id, c.Name, c.CreationDateTime, a.Name as AppName
+                FROM Containers c
+                JOIN Applications a ON c.ParentId = a.Id
+                WHERE c.Name = @ContainerName AND a.Name = @AppName";
 
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
@@ -126,6 +129,90 @@ namespace SOMIOD.Controllers
                 {
                     System.Diagnostics.Debug.WriteLine($"Error in GetContainer: {ex.Message}");
                     return InternalServerError(ex);
+                }
+            }
+        }
+
+        private IHttpActionResult DiscoverContainerChildren(string appName, string containerName)
+        {
+            var discoveryType = Request.Headers.GetValues("somiod-discovery").FirstOrDefault()?.ToLower();
+
+            var validTypes = new[] { "content-instance", "subscription" };
+            if (!validTypes.Contains(discoveryType))
+            {
+                return Content(HttpStatusCode.BadRequest,
+                    new
+                    {
+                        error = $"Invalid discovery type '{discoveryType}' for container",
+                        valid_types = validTypes,
+                        res_type = "error"
+                    });
+            }
+
+            using (SqlConnection conn = new SqlConnection(connectionString))
+            {
+                try
+                {
+                    conn.Open();
+
+                    // Verify parent application exists
+                    int appId = DatabaseHelper.GetApplicationId(conn, appName);
+                    if (appId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new { error = $"Application '{appName}' not found", res_type = "application" });
+                    }
+
+                    // Verify container exists
+                    int containerId = DatabaseHelper.GetContainerId(conn, containerName, appId);
+                    if (containerId == -1)
+                    {
+                        return Content(HttpStatusCode.NotFound,
+                            new { error = $"Container '{containerName}' not found", res_type = "container" });
+                    }
+
+                    var paths = new List<string>();
+                    string query = "";
+
+                    switch (discoveryType)
+                    {
+                        case "content-instance":
+                            query = "SELECT Name FROM ContentInstances WHERE ParentId = @ContainerId ORDER BY Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                cmd.Parameters.Add("@ContainerId", SqlDbType.Int).Value = containerId;
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        paths.Add($"/api/somiod/{appName}/{containerName}/{reader.GetString(0)}");
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "subscription":
+                            query = "SELECT Name FROM Subscriptions WHERE ParentId = @ContainerId ORDER BY Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                cmd.Parameters.Add("@ContainerId", SqlDbType.Int).Value = containerId;
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        paths.Add($"/api/somiod/{appName}/{containerName}/subs/{reader.GetString(0)}");
+                                    }
+                                }
+                            }
+                            break;
+                    }
+
+                    return Ok(paths);
+                }
+                catch (SqlException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"SQL Error: {ex.Message}");
+                    return InternalServerError(new Exception("Database error occurred."));
                 }
             }
         }
