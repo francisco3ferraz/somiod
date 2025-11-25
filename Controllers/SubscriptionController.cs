@@ -74,6 +74,13 @@ namespace SOMIOD.Controllers
                 return BadRequest("Endpoint is required");
             }
 
+            if (!subscription.endpoint.StartsWith("http://") && 
+                    !subscription.endpoint.StartsWith("https://") &&
+                    !subscription.endpoint.StartsWith("mqtt://"))
+            {
+                return BadRequest("Endpoint must start with http://, https://, or mqtt://");
+            }
+
             subscription.creation_datetime = DateTime.Now;
 
             using (SqlConnection conn = new SqlConnection(connectionString))
@@ -118,9 +125,9 @@ namespace SOMIOD.Controllers
                     }
 
                     string insertQuery = @"
-                INSERT INTO Subscriptions (Name, Evt, Endpoint, ParentId, CreationDateTime) 
-                VALUES (@Name, @Evt, @Endpoint, @ParentId, @CreationDateTime);
-                SELECT SCOPE_IDENTITY();";
+                        INSERT INTO Subscriptions (Name, Evt, Endpoint, ParentId, CreationDateTime) 
+                        VALUES (@Name, @Evt, @Endpoint, @ParentId, @CreationDateTime);
+                        SELECT SCOPE_IDENTITY();";
 
                     int newId;
                     using (SqlCommand insertCmd = new SqlCommand(insertQuery, conn))
@@ -197,11 +204,11 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     string query = @"
-                SELECT s.Id, s.Name, s.Evt, s.Endpoint, s.CreationDateTime, c.Name as ContainerName
-                FROM Subscriptions s
-                JOIN Containers c ON s.ParentId = c.Id
-                JOIN Applications a ON c.ParentId = a.Id
-                WHERE s.Name = @SubName AND c.Name = @ContainerName AND a.Name = @AppName";
+                        SELECT s.Id, s.Name, s.Evt, s.Endpoint, s.CreationDateTime, c.Name as ContainerName
+                        FROM Subscriptions s
+                        JOIN Containers c ON s.ParentId = c.Id
+                        JOIN Applications a ON c.ParentId = a.Id
+                        WHERE s.Name = @SubName AND c.Name = @ContainerName AND a.Name = @AppName";
 
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
@@ -313,9 +320,9 @@ namespace SOMIOD.Controllers
 
                     // Check if subscription exists
                     string checkQuery = @"
-                SELECT s.Id, s.Name
-                FROM Subscriptions s
-                WHERE s.Name = @SubName AND s.ParentId = @ParentId";
+                        SELECT s.Id, s.Name
+                        FROM Subscriptions s
+                        WHERE s.Name = @SubName AND s.ParentId = @ParentId";
 
                     int subId;
                     string actualName;

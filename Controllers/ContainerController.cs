@@ -616,9 +616,9 @@ namespace SOMIOD.Controllers
                     }
 
                     string insertQuery = @"
-                INSERT INTO ContentInstances (Name, ContentType, Content, ParentId, CreationDateTime) 
-                VALUES (@Name, @ContentType, @Content, @ParentId, @CreationDateTime);
-                SELECT SCOPE_IDENTITY();";
+                        INSERT INTO ContentInstances (Name, ContentType, Content, ParentId, CreationDateTime) 
+                        VALUES (@Name, @ContentType, @Content, @ParentId, @CreationDateTime);
+                        SELECT SCOPE_IDENTITY();";
 
                     int newId;
                     using (SqlCommand insertCmd = new SqlCommand(insertQuery, conn))
@@ -631,6 +631,14 @@ namespace SOMIOD.Controllers
 
                         newId = Convert.ToInt32(insertCmd.ExecuteScalar());
                     }
+
+                    string containerPath = $"api/somiod/{appName}/{containerName}";
+                    NotificationService.TriggerNotifications(
+                        containerId,
+                        1, // evt=1 (creation)
+                        contentInstance.resource_name,
+                        containerPath
+                    );
 
                     var response = new
                     {

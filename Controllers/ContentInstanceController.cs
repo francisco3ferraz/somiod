@@ -29,7 +29,7 @@ namespace SOMIOD.Controllers
         /// <response code="400">Application, container, or content-instance name is missing</response>
         /// <response code="404">Content-instance, container, or application not found</response>
         [HttpGet]
-        [Route("{contentName}")]
+        [Route("{contentName:regex(^(?!subs$)[A-Za-z0-9_-]+$)}")]
         public IHttpActionResult GetContentInstance(string appName, string containerName, string contentName)
         {
             if (string.IsNullOrWhiteSpace(appName))
@@ -120,7 +120,7 @@ namespace SOMIOD.Controllers
         /// <response code="400">Application, container, or content-instance name is missing</response>
         /// <response code="404">Content-instance, container, or application not found</response>
         [HttpDelete]
-        [Route("{contentName}")]
+        [Route("{contentName:regex(^(?!subs$)[A-Za-z0-9_-]+$)}")]
         public IHttpActionResult DeleteContentInstance(string appName, string containerName, string contentName)
         {
             if (string.IsNullOrWhiteSpace(appName))
@@ -198,6 +198,14 @@ namespace SOMIOD.Controllers
                             actualName = reader.GetString(reader.GetOrdinal("Name"));
                         }
                     }
+
+                    string containerPath = $"api/somiod/{appName}/{containerName}";
+                    NotificationService.TriggerNotifications(
+                        containerId,
+                        2, // evt=2 (deletion)
+                        contentName,
+                        containerPath
+                    );
 
                     string deleteQuery = "DELETE FROM ContentInstances WHERE Id = @Id";
 
