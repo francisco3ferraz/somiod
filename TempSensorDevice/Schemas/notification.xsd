@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="notification">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="subscription_name" type="xs:string">
+          <xs:annotation>
+            <xs:documentation>Name of the subscription that triggered this notification</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="event_type">
+          <xs:annotation>
+            <xs:documentation>Type of event: creation or deletion</xs:documentation>
+          </xs:annotation>
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="creation"/>
+              <xs:enumeration value="deletion"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="resource_name" type="xs:string">
+          <xs:annotation>
+            <xs:documentation>Name of the resource that triggered the event</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="container_path" type="xs:string">
+          <xs:annotation>
+            <xs:documentation>Full path to the container (e.g., api/somiod/app/container)</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="timestamp" type="xs:string">
+          <xs:annotation>
+            <xs:documentation>ISO 8601 timestamp of the event</xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
