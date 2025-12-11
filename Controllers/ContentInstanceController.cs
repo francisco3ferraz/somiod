@@ -168,14 +168,15 @@ namespace SOMIOD.Controllers
                             });
                     }
 
-                    // Check if content-instance exists
+                    // Fetch full content-instance data BEFORE deletion (for notification)
                     string checkQuery = @"
-                        SELECT ci.Id, ci.Name
+                        SELECT ci.Id, ci.Name, ci.ContentType, ci.Content, ci.CreationDateTime
                         FROM ContentInstances ci
                         WHERE ci.Name = @ContentName AND ci.ParentId = @ParentId";
 
                     int contentId;
                     string actualName;
+                    object resourceData = null;
 
                     using (SqlCommand checkCmd = new SqlCommand(checkQuery, conn))
                     {
@@ -196,15 +197,30 @@ namespace SOMIOD.Controllers
 
                             contentId = reader.GetInt32(reader.GetOrdinal("Id"));
                             actualName = reader.GetString(reader.GetOrdinal("Name"));
+
+                            // Build full resource data for notification
+                            resourceData = new
+                            {
+                                id = contentId,
+                                res_type = "content-instance",
+                                resource_name = actualName,
+                                parent = containerName,
+                                content_type = reader.GetString(reader.GetOrdinal("ContentType")),
+                                content = reader.GetString(reader.GetOrdinal("Content")),
+                                creation_datetime = reader.GetDateTime(reader.GetOrdinal("CreationDateTime"))
+                                    .ToString("yyyy-MM-ddTHH:mm:ss")
+                            };
                         }
                     }
 
+                    // Trigger notifications BEFORE deletion with full resource data
                     string containerPath = $"api/somiod/{appName}/{containerName}";
                     NotificationService.TriggerNotifications(
                         containerId,
                         2, // evt=2 (deletion)
                         contentName,
-                        containerPath
+                        containerPath,
+                        resourceData
                     );
 
                     string deleteQuery = "DELETE FROM ContentInstances WHERE Id = @Id";

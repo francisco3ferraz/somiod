@@ -27,6 +27,19 @@ namespace SOMIOD.Helpers
         /// <param name="containerPath">Full path to container (e.g., "api/somiod/app/container")</param>
         public static void TriggerNotifications(int containerId, int eventType, string resourceName, string containerPath)
         {
+            TriggerNotifications(containerId, eventType, resourceName, containerPath, null);
+        }
+
+        /// <summary>
+        /// Triggers notifications for all matching subscriptions in a container with full resource data
+        /// </summary>
+        /// <param name="containerId">Container ID where the event occurred</param>
+        /// <param name="eventType">1=creation, 2=deletion</param>
+        /// <param name="resourceName">Name of the resource that was created/deleted</param>
+        /// <param name="containerPath">Full path to container (e.g., "api/somiod/app/container")</param>
+        /// <param name="resourceData">Full resource data object (for deletion notifications)</param>
+        public static void TriggerNotifications(int containerId, int eventType, string resourceName, string containerPath, object resourceData)
+        {
             string connectionString = SOMIOD.Properties.Settings.Default.ConnStr;
 
             using (SqlConnection conn = new SqlConnection(connectionString))
@@ -67,7 +80,7 @@ namespace SOMIOD.Helpers
                     // Send notifications to each matching subscription
                     foreach (var sub in subscriptions)
                     {
-                        SendNotification(sub, eventType, resourceName, containerPath);
+                        SendNotification(sub, eventType, resourceName, containerPath, resourceData);
                     }
                 }
                 catch (Exception ex)
@@ -80,19 +93,38 @@ namespace SOMIOD.Helpers
         /// <summary>
         /// Sends a single notification via MQTT or HTTP
         /// </summary>
-        private static void SendNotification(Subscription subscription, int eventType, string resourceName, string containerPath)
+        private static void SendNotification(Subscription subscription, int eventType, string resourceName, string containerPath, object resourceData = null)
         {
             try
             {
                 // Build notification payload
-                var notificationData = new
+                object notificationData;
+
+                if (resourceData != null)
                 {
-                    subscription_name = subscription.Name,
-                    event_type = eventType == 1 ? "creation" : "deletion",
-                    resource_name = resourceName,
-                    container_path = containerPath,
-                    timestamp = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")
-                };
+                    // Include full resource data in notification (for deletion events)
+                    notificationData = new
+                    {
+                        subscription_name = subscription.Name,
+                        event_type = eventType == 1 ? "creation" : "deletion",
+                        resource_name = resourceName,
+                        container_path = containerPath,
+                        timestamp = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                        resource = resourceData
+                    };
+                }
+                else
+                {
+                    // Basic notification without full resource data
+                    notificationData = new
+                    {
+                        subscription_name = subscription.Name,
+                        event_type = eventType == 1 ? "creation" : "deletion",
+                        resource_name = resourceName,
+                        container_path = containerPath,
+                        timestamp = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss")
+                    };
+                }
 
                 string jsonPayload = JsonConvert.SerializeObject(notificationData, Formatting.Indented);
 
