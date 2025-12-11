@@ -557,7 +557,7 @@ namespace SOMIOD.Controllers
         ///     
         /// **Note:** Returns empty array [] if no applications exist.
         /// 
-        /// **Required header:** somiod-discovery: application
+        /// **Required header:** somiod-discovery: application | container | content-instance | subscription
         /// </remarks>
         [HttpGet]
         [Route("")]
@@ -568,8 +568,9 @@ namespace SOMIOD.Controllers
                 return Content(HttpStatusCode.BadRequest,
                     new
                     {
-                        error = "Discovery header required. Add 'somiod-discovery: application' header.",
+                        error = "Discovery header required. Add 'somiod-discovery: <type>' header.",
                         hint = "GET all without discovery header is not supported.",
+                        valid_types = new[] { "application", "container", "content-instance", "subscription" },
                         res_type = "error"
                     });
             }
@@ -577,13 +578,14 @@ namespace SOMIOD.Controllers
             var discoveryValues = Request.Headers.GetValues("somiod-discovery");
             string discoveryType = discoveryValues.FirstOrDefault()?.ToLower();
 
-            if (discoveryType != "application")
+            var validTypes = new[] { "application", "container", "content-instance", "subscription" };
+            if (!validTypes.Contains(discoveryType))
             {
                 return Content(HttpStatusCode.BadRequest,
                     new
                     {
                         error = $"Invalid discovery type '{discoveryType}' at this endpoint.",
-                        expected = "application",
+                        valid_types = validTypes,
                         res_type = "error"
                     });
             }
@@ -595,19 +597,85 @@ namespace SOMIOD.Controllers
                     conn.Open();
 
                     var paths = new List<string>();
+                    string query = "";
 
-                    string query = "SELECT Name FROM Applications ORDER BY Name";
-
-                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    switch (discoveryType)
                     {
-                        using (SqlDataReader reader = cmd.ExecuteReader())
-                        {
-                            while (reader.Read())
+                        case "application":
+                            query = "SELECT Name FROM Applications ORDER BY Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
                             {
-                                string name = reader.GetString(0);
-                                paths.Add($"/api/somiod/{name}");
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        string name = reader.GetString(0);
+                                        paths.Add($"/api/somiod/{name}");
+                                    }
+                                }
                             }
-                        }
+                            break;
+
+                        case "container":
+                            query = @"SELECT a.Name AS AppName, c.Name AS ContainerName 
+                                     FROM Containers c 
+                                     JOIN Applications a ON c.ParentId = a.Id 
+                                     ORDER BY a.Name, c.Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        string appName = reader.GetString(0);
+                                        string containerName = reader.GetString(1);
+                                        paths.Add($"/api/somiod/{appName}/{containerName}");
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "content-instance":
+                            query = @"SELECT a.Name AS AppName, c.Name AS ContainerName, ci.Name AS ContentInstanceName 
+                                     FROM ContentInstances ci 
+                                     JOIN Containers c ON ci.ParentId = c.Id 
+                                     JOIN Applications a ON c.ParentId = a.Id 
+                                     ORDER BY a.Name, c.Name, ci.Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        string appName = reader.GetString(0);
+                                        string containerName = reader.GetString(1);
+                                        string contentInstanceName = reader.GetString(2);
+                                        paths.Add($"/api/somiod/{appName}/{containerName}/{contentInstanceName}");
+                                    }
+                                }
+                            }
+                            break;
+
+                        case "subscription":
+                            query = @"SELECT a.Name AS AppName, c.Name AS ContainerName, s.Name AS SubscriptionName 
+                                     FROM Subscriptions s 
+                                     JOIN Containers c ON s.ParentId = c.Id 
+                                     JOIN Applications a ON c.ParentId = a.Id 
+                                     ORDER BY a.Name, c.Name, s.Name";
+                            using (SqlCommand cmd = new SqlCommand(query, conn))
+                            {
+                                using (SqlDataReader reader = cmd.ExecuteReader())
+                                {
+                                    while (reader.Read())
+                                    {
+                                        string appName = reader.GetString(0);
+                                        string containerName = reader.GetString(1);
+                                        string subscriptionName = reader.GetString(2);
+                                        paths.Add($"/api/somiod/{appName}/{containerName}/subs/{subscriptionName}");
+                                    }
+                                }
+                            }
+                            break;
                     }
 
                     return Ok(paths);
@@ -615,7 +683,7 @@ namespace SOMIOD.Controllers
                 catch (SqlException ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"SQL Error in DiscoverApplications: {ex.Message}");
-                    return InternalServerError(new Exception("An error occurred during application discovery."));
+                    return InternalServerError(new Exception("An error occurred during discovery."));
                 }
                 catch (Exception ex)
                 {
