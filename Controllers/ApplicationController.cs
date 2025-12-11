@@ -24,7 +24,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new application resource in the SOMIOD middleware
         /// </summary>
-        /// <param name="app">Application object with resource-name (optional)</param>
+        /// <param name="app">Application object with resource_name (optional)</param>
         /// <returns>Created application with all properties</returns>
         /// <response code="201">Application created successfully</response>
         /// <response code="400">Invalid input - resource name contains invalid characters</response>
@@ -32,19 +32,23 @@ namespace SOMIOD.Controllers
         /// <remarks>
         /// Creates a new top-level application resource.
         /// 
-        /// **Sample request:**
+        /// **cURL Command:**
         /// 
-        ///     POST /api/somiod
-        ///     Content-Type: application/json
+        ///     curl -X POST "https://localhost:44346/api/somiod" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"smart-home\"}" -k
         ///     
-        ///     {
-        ///        "resource_name": "smart-home"
-        ///     }
+        /// **Auto-generation:** If resource_name is omitted or empty, a unique name will be auto-generated:
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{}" -k
         ///     
-        /// **Auto-generation:** If resource_name is omitted or empty, a unique name will be auto-generated.
+        /// **Response (201 Created):**
         /// 
-        /// **Sample response (201 Created):**
-        /// 
+        ///     HTTP/1.1 201 Created
+        ///     Location: https://localhost:44346/api/somiod/smart-home
+        ///     
         ///     {
         ///        "id": 1,
         ///        "res_type": "application",
@@ -128,8 +132,51 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
-        /// Gets application by name OR discovers child resources (with header)
+        /// Gets application by name OR discovers child resources (with somiod-discovery header)
         /// </summary>
+        /// <param name="appName">Application resource-name</param>
+        /// <returns>Application properties or list of child resource paths</returns>
+        /// <response code="200">Application found or discovery successful</response>
+        /// <response code="400">Invalid discovery type</response>
+        /// <response code="404">Application not found</response>
+        /// <remarks>
+        /// **Get Application - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "application",
+        ///        "resource_name": "smart-home",
+        ///        "creation_datetime": "2025-01-15T10:30:45"
+        ///     }
+        ///     
+        /// ---
+        /// 
+        /// **Discover Containers under Application - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "somiod-discovery: container" -k
+        ///     
+        /// **Discover Content-Instances under Application - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "somiod-discovery: content-instance" -k
+        ///     
+        /// **Discover Subscriptions under Application - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "somiod-discovery: subscription" -k
+        ///     
+        /// **Discovery Response (200 OK):**
+        /// 
+        ///     [
+        ///        "/api/somiod/smart-home/living-room",
+        ///        "/api/somiod/smart-home/kitchen"
+        ///     ]
+        /// </remarks>
         [HttpGet]
         [Route("{appName}")]
         public IHttpActionResult GetApplicationOrDiscoverContainer(string appName)
@@ -281,28 +328,25 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
-        /// Updates an existing application resource-name
+        /// Updates an existing application resource_name
         /// </summary>
-        /// <param name="appName">Current resource-name of the application</param>
-        /// <param name="app">Application object with new resource-name</param>
+        /// <param name="appName">Current resource_name of the application</param>
+        /// <param name="app">Application object with new resource_name</param>
         /// <returns>Updated application properties</returns>
         /// <response code="200">Application updated successfully</response>
         /// <response code="400">Invalid input data or resource name</response>
         /// <response code="404">Application not found</response>
         /// <response code="409">New name conflicts with existing application</response>
         /// <remarks>
-        /// Updates the resource-name of an existing application.
+        /// Updates the resource_name of an existing application.
         /// 
-        /// **Sample request:**
+        /// **cURL Command:**
         /// 
-        ///     PUT /api/somiod/smart-home
-        ///     Content-Type: application/json
+        ///     curl -X PUT "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"smart-home-v2\"}" -k
         ///     
-        ///     {
-        ///        "resource_name": "smart-home-v2"
-        ///     }
-        ///     
-        /// **Sample response (200 OK):**
+        /// **Response (200 OK):**
         /// 
         ///     {
         ///        "id": 1,
@@ -417,7 +461,7 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Deletes an application and all child resources (CASCADE)
         /// </summary>
-        /// <param name="appName">The resource-name of the application to delete</param>
+        /// <param name="appName">The resource_name of the application to delete</param>
         /// <returns>Deletion confirmation with cascade statistics</returns>
         /// <response code="200">Application deleted successfully</response>
         /// <response code="400">Application name is missing</response>
@@ -425,11 +469,11 @@ namespace SOMIOD.Controllers
         /// <remarks>
         /// Deletes an application and ALL its child resources via CASCADE delete.
         /// 
-        /// **Sample request:**
+        /// **cURL Command:**
         /// 
-        ///     DELETE /api/somiod/smart-home
+        ///     curl -X DELETE "https://localhost:44346/api/somiod/smart-home" -k
         ///     
-        /// **Sample response (200 OK):**
+        /// **Response (200 OK):**
         /// 
         ///     {
         ///        "message": "Application 'smart-home' deleted successfully",
@@ -533,21 +577,20 @@ namespace SOMIOD.Controllers
 
 
         /// <summary>
-        /// Discovers all applications in the SOMIOD middleware
+        /// Discovers all resources in the SOMIOD middleware (global discovery)
         /// </summary>
-        /// <returns>Array of paths to all applications</returns>
+        /// <returns>Array of paths to all resources of the specified type</returns>
         /// <response code="200">Discovery successful - returns array of resource paths</response>
         /// <response code="400">Missing or invalid somiod-discovery header</response>
         /// <remarks>
-        /// Discovers all application resources. Requires the somiod-discovery header.
+        /// Discovers resources globally. Requires the somiod-discovery header.
         /// 
-        /// **Sample request:**
+        /// **Discover All Applications - cURL Command:**
         /// 
-        ///     GET /api/somiod
-        ///     Content-Type: application/json
-        ///     somiod-discovery: application
+        ///     curl -X GET "https://localhost:44346/api/somiod" \
+        ///          -H "somiod-discovery: application" -k
         ///     
-        /// **Sample response (200 OK):**
+        /// **Response (200 OK):**
         /// 
         ///     [
         ///        "/api/somiod/smart-home",
@@ -555,9 +598,38 @@ namespace SOMIOD.Controllers
         ///        "/api/somiod/warehouse-monitoring"
         ///     ]
         ///     
-        /// **Note:** Returns empty array [] if no applications exist.
+        /// ---
         /// 
-        /// **Required header:** somiod-discovery: application | container | content-instance | subscription
+        /// **Discover All Containers (Global) - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod" \
+        ///          -H "somiod-discovery: container" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     [
+        ///        "/api/somiod/smart-home/living-room",
+        ///        "/api/somiod/smart-home/kitchen",
+        ///        "/api/somiod/office-automation/meeting-room"
+        ///     ]
+        ///     
+        /// ---
+        /// 
+        /// **Discover All Content-Instances (Global) - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod" \
+        ///          -H "somiod-discovery: content-instance" -k
+        ///     
+        /// ---
+        /// 
+        /// **Discover All Subscriptions (Global) - cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod" \
+        ///          -H "somiod-discovery: subscription" -k
+        ///     
+        /// **Note:** Returns empty array [] if no resources exist.
+        /// 
+        /// **Valid discovery types:** application | container | content-instance | subscription
         /// </remarks>
         [HttpGet]
         [Route("")]
@@ -697,8 +769,8 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new container under a specific application
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="container">Container object with resource-name (optional)</param>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="container">Container object with resource_name (optional)</param>
         /// <returns>Created container with all properties</returns>
         /// <response code="201">Container created successfully</response>
         /// <response code="400">Invalid input - resource name contains invalid characters</response>
@@ -707,19 +779,23 @@ namespace SOMIOD.Controllers
         /// <remarks>
         /// Creates a new container resource under an existing application.
         /// 
-        /// **Sample request:**
+        /// **cURL Command:**
         /// 
-        ///     POST /api/somiod/smart-home
-        ///     Content-Type: application/json
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"living-room\"}" -k
         ///     
-        ///     {
-        ///        "resource_name": "living-room"
-        ///     }
+        /// **Auto-generation:** If resource_name is omitted, a unique name will be auto-generated:
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{}" -k
         ///     
-        /// **Auto-generation:** If resource_name is omitted, a unique name will be auto-generated.
+        /// **Response (201 Created):**
         /// 
-        /// **Sample response (201 Created):**
-        /// 
+        ///     HTTP/1.1 201 Created
+        ///     Location: https://localhost:44346/api/somiod/smart-home/living-room
+        ///     
         ///     {
         ///        "id": 1,
         ///        "res_type": "container",

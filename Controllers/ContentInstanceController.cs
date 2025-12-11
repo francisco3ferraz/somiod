@@ -19,15 +19,41 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
-        /// Retrieves a specific content-instance by resource-name
+        /// Retrieves a specific content-instance by resource_name
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="containerName">Parent container resource-name</param>
-        /// <param name="contentName">Content-instance resource-name</param>
-        /// <returns>Content-instance properties</returns>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="containerName">Parent container resource_name</param>
+        /// <param name="contentName">Content-instance resource_name</param>
+        /// <returns>Content-instance properties including content data</returns>
         /// <response code="200">Content-instance found and returned</response>
         /// <response code="400">Application, container, or content-instance name is missing</response>
         /// <response code="404">Content-instance, container, or application not found</response>
+        /// <remarks>
+        /// Retrieves a content-instance resource by its unique resource_name within a container.
+        /// 
+        /// **cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home/living-room/temperature-1" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "content-instance",
+        ///        "resource_name": "temperature-1",
+        ///        "parent": "living-room",
+        ///        "content_type": "application/json",
+        ///        "content": "{\"value\": 23.5, \"unit\": \"celsius\"}",
+        ///        "creation_datetime": "2025-01-15T10:40:00"
+        ///     }
+        ///     
+        /// **Error Response (404 Not Found):**
+        /// 
+        ///     {
+        ///        "error": "Content-instance 'temperature-1' not found under container 'living-room' in application 'smart-home'",
+        ///        "res_type": "content-instance"
+        ///     }
+        /// </remarks>
         [HttpGet]
         [Route("{contentName:regex(^(?!subs$)[A-Za-z0-9_-]+$)}")]
         public IHttpActionResult GetContentInstance(string appName, string containerName, string contentName)
@@ -110,15 +136,54 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
-        /// Deletes a content-instance
+        /// Deletes a content-instance and triggers deletion notifications
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="containerName">Parent container resource-name</param>
-        /// <param name="contentName">Content-instance resource-name to delete</param>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="containerName">Parent container resource_name</param>
+        /// <param name="contentName">Content-instance resource_name to delete</param>
         /// <returns>Deletion confirmation</returns>
         /// <response code="200">Content-instance deleted successfully</response>
         /// <response code="400">Application, container, or content-instance name is missing</response>
         /// <response code="404">Content-instance, container, or application not found</response>
+        /// <remarks>
+        /// Deletes a content-instance resource. This triggers notifications to all matching 
+        /// subscriptions (evt=2 deletion) with the full resource data before deletion.
+        /// 
+        /// **cURL Command:**
+        /// 
+        ///     curl -X DELETE "https://localhost:44346/api/somiod/smart-home/living-room/temperature-1" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     {
+        ///        "message": "Content-instance 'temperature-1' deleted successfully",
+        ///        "deleted_resource": "temperature-1",
+        ///        "parent": "living-room",
+        ///        "res_type": "content-instance"
+        ///     }
+        ///     
+        /// **Notification Payload (sent to subscribers):**
+        /// 
+        ///     {
+        ///        "subscription_name": "my-listener",
+        ///        "event_type": "deletion",
+        ///        "resource_name": "temperature-1",
+        ///        "container_path": "api/somiod/smart-home/living-room",
+        ///        "timestamp": "2025-01-15T10:45:00",
+        ///        "resource": {
+        ///            "id": 1,
+        ///            "res_type": "content-instance",
+        ///            "resource_name": "temperature-1",
+        ///            "parent": "living-room",
+        ///            "content_type": "application/json",
+        ///            "content": "{\"value\": 23.5, \"unit\": \"celsius\"}",
+        ///            "creation_datetime": "2025-01-15T10:40:00"
+        ///        }
+        ///     }
+        ///     
+        /// **Note:** The full resource data is included in notifications so subscribers 
+        /// can access the content before it's permanently deleted.
+        /// </remarks>
         [HttpDelete]
         [Route("{contentName:regex(^(?!subs$)[A-Za-z0-9_-]+$)}")]
         public IHttpActionResult DeleteContentInstance(string appName, string containerName, string contentName)

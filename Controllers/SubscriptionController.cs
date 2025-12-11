@@ -24,14 +24,64 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Creates a new subscription under a specific container
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="containerName">Parent container resource-name</param>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="containerName">Parent container resource_name</param>
         /// <param name="subscription">Subscription object with properties</param>
         /// <returns>Created subscription with all properties</returns>
         /// <response code="201">Subscription created successfully</response>
         /// <response code="400">Invalid input - missing required fields or invalid event type</response>
         /// <response code="404">Parent container or application not found</response>
         /// <response code="409">Subscription with this name already exists</response>
+        /// <remarks>
+        /// Creates a new subscription to listen for content-instance events in a container.
+        /// 
+        /// **Create MQTT Subscription (Creation Events) - cURL Command:**
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home/living-room/subs" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"mqtt-listener\", \"evt\": 1, \"endpoint\": \"mqtt://localhost:1883\"}" -k
+        ///     
+        /// **Create MQTT Subscription (Deletion Events) - cURL Command:**
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home/living-room/subs" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"delete-listener\", \"evt\": 2, \"endpoint\": \"mqtt://localhost:1883\"}" -k
+        ///     
+        /// **Create HTTP Subscription - cURL Command:**
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home/living-room/subs" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"resource_name\": \"http-webhook\", \"evt\": 1, \"endpoint\": \"http://localhost:8080/webhook\"}" -k
+        ///     
+        /// **Auto-generation:** If resource_name is omitted, a unique name will be auto-generated:
+        /// 
+        ///     curl -X POST "https://localhost:44346/api/somiod/smart-home/living-room/subs" \
+        ///          -H "Content-Type: application/json" \
+        ///          -d "{\"evt\": 1, \"endpoint\": \"mqtt://localhost:1883\"}" -k
+        ///     
+        /// **Response (201 Created):**
+        /// 
+        ///     HTTP/1.1 201 Created
+        ///     Location: https://localhost:44346/api/somiod/smart-home/living-room/subs/mqtt-listener
+        ///     
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "subscription",
+        ///        "resource_name": "mqtt-listener",
+        ///        "parent": "living-room",
+        ///        "evt": 1,
+        ///        "endpoint": "mqtt://localhost:1883",
+        ///        "creation_datetime": "2025-01-15T10:50:00"
+        ///     }
+        ///     
+        /// **Event Types:**
+        /// - evt=1: Creation events (triggered when content-instance is created)
+        /// - evt=2: Deletion events (triggered when content-instance is deleted)
+        /// 
+        /// **Endpoint Formats:**
+        /// - MQTT: mqtt://broker-address:port (e.g., mqtt://localhost:1883)
+        /// - HTTP: http://host:port/path or https://host:port/path
+        /// </remarks>
         [HttpPost]
         [Route("")]
         public IHttpActionResult PostSubscription(string appName, string containerName, [FromBody] Subscription subscription)
@@ -169,15 +219,41 @@ namespace SOMIOD.Controllers
         }
 
         /// <summary>
-        /// Retrieves a specific subscription by resource-name
+        /// Retrieves a specific subscription by resource_name
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="containerName">Parent container resource-name</param>
-        /// <param name="subName">Subscription resource-name</param>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="containerName">Parent container resource_name</param>
+        /// <param name="subName">Subscription resource_name</param>
         /// <returns>Subscription properties</returns>
         /// <response code="200">Subscription found and returned</response>
         /// <response code="400">Application, container, or subscription name is missing</response>
         /// <response code="404">Subscription, container, or application not found</response>
+        /// <remarks>
+        /// Retrieves a subscription resource by its unique resource_name within a container.
+        /// 
+        /// **cURL Command:**
+        /// 
+        ///     curl -X GET "https://localhost:44346/api/somiod/smart-home/living-room/subs/mqtt-listener" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     {
+        ///        "id": 1,
+        ///        "res_type": "subscription",
+        ///        "resource_name": "mqtt-listener",
+        ///        "parent": "living-room",
+        ///        "evt": 1,
+        ///        "endpoint": "mqtt://localhost:1883",
+        ///        "creation_datetime": "2025-01-15T10:50:00"
+        ///     }
+        ///     
+        /// **Error Response (404 Not Found):**
+        /// 
+        ///     {
+        ///        "error": "Subscription 'mqtt-listener' not found under container 'living-room' in application 'smart-home'",
+        ///        "res_type": "subscription"
+        ///     }
+        /// </remarks>
         [HttpGet]
         [Route("{subName}")]
         public IHttpActionResult GetSubscription(string appName, string containerName, string subName)
@@ -262,13 +338,32 @@ namespace SOMIOD.Controllers
         /// <summary>
         /// Deletes a subscription
         /// </summary>
-        /// <param name="appName">Parent application resource-name</param>
-        /// <param name="containerName">Parent container resource-name</param>
-        /// <param name="subName">Subscription resource-name to delete</param>
+        /// <param name="appName">Parent application resource_name</param>
+        /// <param name="containerName">Parent container resource_name</param>
+        /// <param name="subName">Subscription resource_name to delete</param>
         /// <returns>Deletion confirmation</returns>
         /// <response code="200">Subscription deleted successfully</response>
         /// <response code="400">Application, container, or subscription name is missing</response>
         /// <response code="404">Subscription, container, or application not found</response>
+        /// <remarks>
+        /// Deletes a subscription resource. After deletion, no more notifications 
+        /// will be sent to this subscription's endpoint.
+        /// 
+        /// **cURL Command:**
+        /// 
+        ///     curl -X DELETE "https://localhost:44346/api/somiod/smart-home/living-room/subs/mqtt-listener" -k
+        ///     
+        /// **Response (200 OK):**
+        /// 
+        ///     {
+        ///        "message": "Subscription 'mqtt-listener' deleted successfully",
+        ///        "deleted_resource": "mqtt-listener",
+        ///        "parent": "living-room",
+        ///        "res_type": "subscription"
+        ///     }
+        ///     
+        /// **Note:** Deleting a subscription stops all future notifications to that endpoint.
+        /// </remarks>
         [HttpDelete]
         [Route("{subName}")]
         public IHttpActionResult DeleteSubscription(string appName, string containerName, string subName)
