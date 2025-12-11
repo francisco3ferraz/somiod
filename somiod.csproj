@@ -139,9 +139,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="App_Data\SMIOD_DB.mdf" />
-    <Content Include="App_Data\SMIOD_DB_log.ldf">
-      <DependentUpon>SMIOD_DB.mdf</DependentUpon>
+    <Content Include="App_Data\SOMIOD_DB.mdf" />
+    <Content Include="App_Data\SOMIOD_DB_log.ldf">
+      <DependentUpon>SOMIOD_DB.mdf</DependentUpon>
     </Content>
     <Content Include="Content\Site.css" />
     <Content Include="Data\CreateDatabase.sql" />
