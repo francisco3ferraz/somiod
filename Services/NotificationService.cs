@@ -191,32 +191,36 @@ namespace SOMIOD.Helpers
         /// <summary>
         /// Sends HTTP POST notification
         /// </summary>
-        private static async void SendHttpNotification(string endpoint, string payload)
+        private static void SendHttpNotification(string endpoint, string payload)
         {
-            try
+            // Fire and forget - run in background to prevent async void exceptions from crashing the request
+            System.Threading.Tasks.Task.Run(async () =>
             {
-                using (HttpClient client = new HttpClient())
+                try
                 {
-                    client.Timeout = TimeSpan.FromSeconds(5);
-
-                    var content = new StringContent(payload, Encoding.UTF8, "application/json");
-
-                    HttpResponseMessage response = await client.PostAsync(endpoint, content);
-
-                    if (response.IsSuccessStatusCode)
+                    using (HttpClient client = new HttpClient())
                     {
-                        System.Diagnostics.Debug.WriteLine($"HTTP notification sent successfully to {endpoint}");
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"HTTP notification failed: {response.StatusCode}");
+                        client.Timeout = TimeSpan.FromSeconds(5);
+
+                        var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+                        HttpResponseMessage response = await client.PostAsync(endpoint, content);
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"HTTP notification sent successfully to {endpoint}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"HTTP notification failed: {response.StatusCode}");
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"HTTP notification error: {ex.Message}");
-            }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"HTTP notification error: {ex.Message}");
+                }
+            });
         }
 
         /// <summary>

@@ -278,15 +278,22 @@ namespace SOMIOD.Controllers
                         }
                     }
 
-                    // Trigger notifications BEFORE deletion with full resource data
-                    string containerPath = $"api/somiod/{appName}/{containerName}";
-                    NotificationService.TriggerNotifications(
-                        containerId,
-                        2, // evt=2 (deletion)
-                        contentName,
-                        containerPath,
-                        resourceData
-                    );
+                    // Trigger notifications BEFORE deletion with full resource data (don't let notification failures affect the API response)
+                    try
+                    {
+                        string containerPath = $"api/somiod/{appName}/{containerName}";
+                        NotificationService.TriggerNotifications(
+                            containerId,
+                            2, // evt=2 (deletion)
+                            contentName,
+                            containerPath,
+                            resourceData
+                        );
+                    }
+                    catch (Exception notifEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Notification error (non-fatal): {notifEx.Message}");
+                    }
 
                     string deleteQuery = "DELETE FROM ContentInstances WHERE Id = @Id";
 

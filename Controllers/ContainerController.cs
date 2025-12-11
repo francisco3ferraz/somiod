@@ -689,13 +689,21 @@ namespace SOMIOD.Controllers
                         newId = Convert.ToInt32(insertCmd.ExecuteScalar());
                     }
 
-                    string containerPath = $"api/somiod/{appName}/{containerName}";
-                    NotificationService.TriggerNotifications(
-                        containerId,
-                        1, // evt=1 (creation)
-                        contentInstance.resource_name,
-                        containerPath
-                    );
+                    // Trigger notifications (don't let notification failures affect the API response)
+                    try
+                    {
+                        string containerPath = $"api/somiod/{appName}/{containerName}";
+                        NotificationService.TriggerNotifications(
+                            containerId,
+                            1, // evt=1 (creation)
+                            contentInstance.resource_name,
+                            containerPath
+                        );
+                    }
+                    catch (Exception notifEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Notification error (non-fatal): {notifEx.Message}");
+                    }
 
                     var response = new
                     {
